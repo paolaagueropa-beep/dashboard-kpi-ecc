@@ -81,9 +81,6 @@ resumen["Semaforo"]     = resumen["Utilizacion"].apply(lambda x: semaforo(x,"uti
 resumen["Semaforo_Adh"] = resumen["Adhesion"].apply(lambda x: semaforo(x,"adhesion"))
 resumen["Semaforo_Ocu"] = resumen["Ocupacion"].apply(lambda x: semaforo(x,"ocupacion"))
 
-# =============================================
-# FILTROS SIDEBAR
-# =============================================
 st.sidebar.title("🔍 Filtros Globales")
 supervisores = ["Todos"] + sorted(resumen["JP"].dropna().unique().tolist())
 supervisor_sel = st.sidebar.selectbox("Supervisor", supervisores)
@@ -130,9 +127,6 @@ st.markdown("---")
 meses_orden = ["Septiembre","Octubre","Noviembre","Diciembre",
                "Enero","Febrero","Marzo"]
 
-# =============================================
-# TABS
-# =============================================
 tab1, tab2, tab3, tab4, tab5 = st.tabs([
     "📊 Resumen Mensual",
     "🏅 Ranking y Acumulado",
@@ -142,7 +136,7 @@ tab1, tab2, tab3, tab4, tab5 = st.tabs([
 ])
 
 # ══════════════════════════════════════════
-# TAB 1 — RESUMEN MENSUAL
+# TAB 1
 # ══════════════════════════════════════════
 with tab1:
     col_izq, col_der = st.columns(2)
@@ -156,7 +150,7 @@ with tab1:
         fig1.add_vline(x=86, line_dash="dash", line_color="green", annotation_text="Óptimo 86%")
         fig1.update_traces(texttemplate="%{text:.1f}%", textposition="outside", textfont=dict(size=11))
         fig1.update_layout(height=600, plot_bgcolor="white")
-        st.plotly_chart(fig1, use_container_width=True)
+        st.plotly_chart(fig1, use_container_width=True, key="fig1")
 
     with col_der:
         st.subheader("🚦 Distribución Semáforo")
@@ -166,7 +160,7 @@ with tab1:
                      color="Nivel", color_discrete_map=colores_semaforo, hole=0.4)
         fig2.update_traces(textinfo="label+percent+value", textfont=dict(size=12))
         fig2.update_layout(height=300)
-        st.plotly_chart(fig2, use_container_width=True)
+        st.plotly_chart(fig2, use_container_width=True, key="fig2")
 
         st.subheader("👥 KPIs por Jefatura")
         fig3 = go.Figure()
@@ -178,18 +172,16 @@ with tab1:
                                  marker_color=color))
         fig3.add_hline(y=75, line_dash="dash", line_color="orange", annotation_text="Meta 75%")
         fig3.update_layout(barmode="group", height=350, xaxis_tickangle=-45, plot_bgcolor="white")
-        st.plotly_chart(fig3, use_container_width=True)
+        st.plotly_chart(fig3, use_container_width=True, key="fig3")
 
     st.subheader("📈 Evolución Histórica del Servicio")
     meses_disp = [m for m in meses_orden if m in historico.columns]
     promedios  = historico[meses_disp].mean() * 100
     fig4 = go.Figure()
     fig4.add_trace(go.Scatter(
-        x=meses_disp, y=promedios.tolist(),
-        mode="lines+markers+text",
-        text=[f"{v:.1f}%" for v in promedios],
-        textposition="top center", textfont=dict(size=12, color="white"),
-        line=dict(color="#3498db", width=3),
+        x=meses_disp, y=promedios.tolist(), mode="lines+markers+text",
+        text=[f"{v:.1f}%" for v in promedios], textposition="top center",
+        textfont=dict(size=12, color="white"), line=dict(color="#3498db", width=3),
         marker=dict(size=12, color=[colores_semaforo[semaforo(v,"utilizacion")] for v in promedios],
                    line=dict(width=2, color="white")), name="Real"
     ))
@@ -210,7 +202,7 @@ with tab1:
     fig4.add_hline(y=75, line_dash="dash", line_color="orange", annotation_text="Meta 75%")
     fig4.add_hline(y=86, line_dash="dash", line_color="green", annotation_text="Óptimo 86%")
     fig4.update_layout(height=450, plot_bgcolor="white")
-    st.plotly_chart(fig4, use_container_width=True)
+    st.plotly_chart(fig4, use_container_width=True, key="fig4")
 
     st.subheader("📋 Resumen Completo por Agente")
     cols_tabla = ["NOMBRE","JP","HRS_CONTRATO","ESTADO","Tramo_Antiguedad",
@@ -218,14 +210,14 @@ with tab1:
     tabla = df[cols_tabla].sort_values("Utilizacion", ascending=False).copy()
     for col in ["Utilizacion","Adhesion","Ocupacion"]:
         tabla[col] = tabla[col].apply(lambda x: f"{x:.1f}%" if pd.notna(x) else "")
-    st.dataframe(tabla, use_container_width=True)
+    st.dataframe(tabla, use_container_width=True, key="tabla1")
 
 # ══════════════════════════════════════════
-# TAB 2 — RANKING Y ACUMULADO
+# TAB 2
 # ══════════════════════════════════════════
 with tab2:
     st.subheader("🏅 Ranking y Acumulado por Período")
-    periodo = st.radio("Ver por:", ["Mes","Semana","Día"], horizontal=True)
+    periodo = st.radio("Ver por:", ["Mes","Semana","Día"], horizontal=True, key="periodo_tab2")
 
     if periodo == "Mes":
         data_jp = jefatura.copy()
@@ -233,13 +225,13 @@ with tab2:
         titulo_periodo = "Marzo 2026"
     elif periodo == "Semana":
         semanas_disp = sorted(jp_semana["Semana"].dropna().unique().tolist())
-        semana_sel = st.selectbox("Selecciona semana", semanas_disp)
+        semana_sel = st.selectbox("Selecciona semana", semanas_disp, key="semana_tab2")
         data_jp = jp_semana[jp_semana["Semana"] == semana_sel].copy()
         data_ag = semanal[semanal["Semana"] == semana_sel].copy()
         titulo_periodo = semana_sel
     else:
         fechas_disp = sorted(jp_dia["Fecha"].dropna().unique().tolist())
-        fecha_sel = st.selectbox("Selecciona fecha", fechas_disp)
+        fecha_sel = st.selectbox("Selecciona fecha", fechas_disp, key="fecha_tab2")
         data_jp = jp_dia[jp_dia["Fecha"] == fecha_sel].copy()
         data_ag = diario[diario["Fecha"] == fecha_sel].dropna(subset=["Utilizacion"]).copy()
         titulo_periodo = str(fecha_sel)
@@ -258,7 +250,7 @@ with tab2:
         fig_jp.add_vline(x=86, line_dash="dash", line_color="green", annotation_text="Óptimo 86%")
         fig_jp.update_traces(texttemplate="%{text:.1f}%", textposition="outside", textfont=dict(size=11))
         fig_jp.update_layout(height=450, plot_bgcolor="white")
-        st.plotly_chart(fig_jp, use_container_width=True)
+        st.plotly_chart(fig_jp, use_container_width=True, key="fig_jp")
 
     with col_r2:
         st.markdown("#### 🥇 Top 3 Mejor")
@@ -300,7 +292,7 @@ with tab2:
     fig_ag.add_vline(x=86, line_dash="dash", line_color="green", annotation_text="Óptimo 86%")
     fig_ag.update_traces(texttemplate="%{text:.1f}%", textposition="outside", textfont=dict(size=11))
     fig_ag.update_layout(height=600, plot_bgcolor="white")
-    st.plotly_chart(fig_ag, use_container_width=True)
+    st.plotly_chart(fig_ag, use_container_width=True, key="fig_ag")
 
     col_m1, col_m2, col_m3, col_m4 = st.columns(4)
     col_m1.metric("👥 Agentes", len(data_ag_fil))
@@ -309,7 +301,7 @@ with tab2:
     metrica_color(col_m4, "⚡ Ocupación", data_ag_fil["Ocupacion"].mean(), "ocupacion")
 
 # ══════════════════════════════════════════
-# TAB 3 — EVOLUCIÓN POR AGENTE
+# TAB 3
 # ══════════════════════════════════════════
 with tab3:
     st.subheader("👤 Evolución Histórica por Agente")
@@ -365,9 +357,9 @@ with tab3:
     fig_m.add_hline(y=75, line_dash="dash", line_color="orange", annotation_text="Meta 75%")
     fig_m.add_hline(y=86, line_dash="dash", line_color="green", annotation_text="Óptimo 86%")
     fig_m.update_layout(height=380, plot_bgcolor="white", yaxis_range=[0,115])
-    st.plotly_chart(fig_m, use_container_width=True)
+    st.plotly_chart(fig_m, use_container_width=True, key="fig_m")
 
-    st.markdown("#### 📆 Evolución Semanal — Mes Actual")
+    st.markdown("#### 📆 Evolución Semanal")
     ag_sem = semanal[semanal["NOMBRE"] == agente_sel].sort_values("Semana")
     if not ag_sem.empty:
         fig_s = go.Figure()
@@ -383,9 +375,9 @@ with tab3:
         fig_s.add_hrect(y0=75, y1=86,  fillcolor="#f1c40f", opacity=0.05)
         fig_s.add_hrect(y0=86, y1=100, fillcolor="#2ecc71", opacity=0.05)
         fig_s.update_layout(height=350, plot_bgcolor="white", yaxis_range=[0,115])
-        st.plotly_chart(fig_s, use_container_width=True)
+        st.plotly_chart(fig_s, use_container_width=True, key="fig_s")
 
-    st.markdown("#### 📊 Evolución Diaria — Mes Actual")
+    st.markdown("#### 📊 Evolución Diaria")
     ag_dia = diario[diario["NOMBRE"] == agente_sel].dropna(subset=["Utilizacion"]).sort_values("Fecha")
     if not ag_dia.empty:
         fig_d = go.Figure()
@@ -404,10 +396,10 @@ with tab3:
         fig_d.add_hline(y=75, line_dash="dash", line_color="orange", annotation_text="Meta 75%")
         fig_d.add_hline(y=86, line_dash="dash", line_color="green", annotation_text="Óptimo 86%")
         fig_d.update_layout(height=400, plot_bgcolor="white", yaxis_range=[0,115], xaxis_tickangle=-45)
-        st.plotly_chart(fig_d, use_container_width=True)
+        st.plotly_chart(fig_d, use_container_width=True, key="fig_d")
 
 # ══════════════════════════════════════════
-# TAB 4 — AGENTES CRÍTICOS
+# TAB 4
 # ══════════════════════════════════════════
 with tab4:
     criticos_fil = criticos[criticos["JP"] == supervisor_sel].copy() if supervisor_sel != "Todos" else criticos.copy()
@@ -416,7 +408,7 @@ with tab4:
     for col in ["Utilizacion","Adhesion","Ocupacion"]:
         if col in criticos_mostrar.columns:
             criticos_mostrar[col] = criticos_mostrar[col].apply(lambda x: f"{x:.1f}%" if pd.notna(x) else "")
-    st.dataframe(criticos_mostrar, use_container_width=True)
+    st.dataframe(criticos_mostrar, use_container_width=True, key="tabla_criticos")
 
     st.markdown("---")
     st.subheader("📋 Tabla Completa")
@@ -425,17 +417,15 @@ with tab4:
     tabla_mostrar = df[cols_tabla].sort_values("Utilizacion", ascending=False).copy()
     for col in ["Utilizacion","Adhesion","Ocupacion"]:
         tabla_mostrar[col] = tabla_mostrar[col].apply(lambda x: f"{x:.1f}%" if pd.notna(x) else "")
-    st.dataframe(tabla_mostrar, use_container_width=True)
+    st.dataframe(tabla_mostrar, use_container_width=True, key="tabla_completa")
 
 # ══════════════════════════════════════════
-# TAB 5 — CONTROL DE HORAS
+# TAB 5
 # ══════════════════════════════════════════
 with tab5:
     st.subheader("⏱️ Control de Horas — Análisis de Fuga")
 
     vista_hrs = st.radio("Ver por:", ["Mes","Semana","Día"], horizontal=True, key="vista_hrs")
-
-    # Filtro supervisor
     jp_hrs = ["Todos"] + sorted(hrs_mes["JP"].dropna().unique().tolist())
     jp_sel_hrs = st.selectbox("Filtrar supervisor", jp_hrs, key="jp_hrs")
 
@@ -456,7 +446,6 @@ with tab5:
     if jp_sel_hrs != "Todos":
         data_hrs = data_hrs[data_hrs["JP"] == jp_sel_hrs]
 
-    # Filtro agente
     agentes_hrs = ["Todos"] + sorted(data_hrs["NOMBRE"].dropna().unique().tolist())
     agente_sel_hrs = st.selectbox("Filtrar agente", agentes_hrs, key="agente_hrs")
     if agente_sel_hrs != "Todos":
@@ -464,44 +453,118 @@ with tab5:
 
     st.markdown(f"### 📊 Resumen de Horas — {titulo_hrs}")
 
-    # Tarjetas resumen horas principales
-    col_h1, col_h2, col_h3, col_h4 = st.columns(4)
-    col_h1.markdown(f"""
-    <div style='background:#3498db20; border-left:5px solid #3498db; padding:10px; border-radius:5px'>
-        <p style='margin:0; font-size:13px; color:gray'>🔌 Hrs Conexión</p>
-        <p style='margin:0; font-size:20px; font-weight:bold'>{data_hrs['Conectado_hrs'].iloc[0] if agente_sel_hrs != 'Todos' else '—'}</p>
-    </div>""", unsafe_allow_html=True)
-    col_h2.markdown(f"""
-    <div style='background:#9b59b620; border-left:5px solid #9b59b6; padding:10px; border-radius:5px'>
-        <p style='margin:0; font-size:13px; color:gray'>📅 Hrs Programadas</p>
-        <p style='margin:0; font-size:20px; font-weight:bold'>{data_hrs['Turno_hrs'].iloc[0] if agente_sel_hrs != 'Todos' else '—'}</p>
-    </div>""", unsafe_allow_html=True)
-    col_h3.markdown(f"""
-    <div style='background:#2ecc7120; border-left:5px solid #2ecc71; padding:10px; border-radius:5px'>
-        <p style='margin:0; font-size:13px; color:gray'>✅ Hrs Productivas</p>
-        <p style='margin:0; font-size:20px; font-weight:bold'>{data_hrs['Hrs_Productivas'].iloc[0] if agente_sel_hrs != 'Todos' else '—'}</p>
-    </div>""", unsafe_allow_html=True)
-    col_h4.markdown(f"""
-    <div style='background:#e74c3c20; border-left:5px solid #e74c3c; padding:10px; border-radius:5px'>
-        <p style='margin:0; font-size:13px; color:gray'>❌ Hrs Improductivas</p>
-        <p style='margin:0; font-size:20px; font-weight:bold'>{data_hrs['Hrs_Improductivas'].iloc[0] if agente_sel_hrs != 'Todos' else '—'}</p>
-    </div>""", unsafe_allow_html=True)
+    if agente_sel_hrs != "Todos" and len(data_hrs) > 0:
+        row_hrs = data_hrs.iloc[0]
+        col_h1, col_h2, col_h3, col_h4 = st.columns(4)
+        col_h1.markdown(f"""
+        <div style='background:#3498db20; border-left:5px solid #3498db; padding:10px; border-radius:5px'>
+            <p style='margin:0; font-size:13px; color:gray'>🔌 Hrs Conexión</p>
+            <p style='margin:0; font-size:20px; font-weight:bold'>{row_hrs.get('Conectado_hrs','—')}</p>
+        </div>""", unsafe_allow_html=True)
+        col_h2.markdown(f"""
+        <div style='background:#9b59b620; border-left:5px solid #9b59b6; padding:10px; border-radius:5px'>
+            <p style='margin:0; font-size:13px; color:gray'>📅 Hrs Programadas</p>
+            <p style='margin:0; font-size:20px; font-weight:bold'>{row_hrs.get('Turno_hrs','—')}</p>
+        </div>""", unsafe_allow_html=True)
+        col_h3.markdown(f"""
+        <div style='background:#2ecc7120; border-left:5px solid #2ecc71; padding:10px; border-radius:5px'>
+            <p style='margin:0; font-size:13px; color:gray'>✅ Hrs Productivas</p>
+            <p style='margin:0; font-size:20px; font-weight:bold'>{row_hrs.get('Hrs_Productivas','—')}</p>
+        </div>""", unsafe_allow_html=True)
+        col_h4.markdown(f"""
+        <div style='background:#e74c3c20; border-left:5px solid #e74c3c; padding:10px; border-radius:5px'>
+            <p style='margin:0; font-size:13px; color:gray'>❌ Hrs Improductivas</p>
+            <p style='margin:0; font-size:20px; font-weight:bold'>{row_hrs.get('Hrs_Improductivas','—')}</p>
+        </div>""", unsafe_allow_html=True)
+
+        st.markdown("---")
+
+        estados_nombres = {
+            'EnCola_hrs': '📞 En Cola',
+            'Inactivo_hrs': '💤 Inactivo/Disponible',
+            'Interactuando_hrs': '🗣️ Interactuando',
+            'Ausente_hrs': '🚫 Ausente',
+            'NoResponde_hrs': '📵 No Responde',
+            'FueraCola_hrs': '🚪 Fuera de Cola',
+            'Descanso_hrs': '☕ Descanso',
+            'Comida_hrs': '🍽️ Comida',
+            'Reunion_hrs': '👥 Reunión',
+            'Capacitacion_hrs': '📚 Capacitación',
+            'Gestion_hrs': '📝 Gestión',
+            'LlamadaManual_hrs': '📲 Llamada Manual',
+            'Bano_hrs': '🚽 Baño',
+            'Descanso2_hrs': '😴 Descanso 2',
+            'PausaActiva_hrs': '🏃 Pausa Activa'
+        }
+
+        def hhmmss_a_min(t):
+            try:
+                partes = str(t).split(':')
+                return int(partes[0])*60 + int(partes[1]) + int(partes[2])/60
+            except: return 0
+
+        estados_min = {v: hhmmss_a_min(row_hrs.get(k, '00:00:00'))
+                      for k, v in estados_nombres.items()}
+        estados_min = {k: v for k, v in estados_min.items() if v > 0}
+        estados_sorted = dict(sorted(estados_min.items(), key=lambda x: x[1], reverse=True))
+
+        productivas_labels = ['📞 En Cola','💤 Inactivo/Disponible','🗣️ Interactuando']
+        colores_barra = ['#2ecc71' if k in productivas_labels else '#e74c3c'
+                        for k in estados_sorted.keys()]
+
+        fig_hrs = go.Figure(go.Bar(
+            x=list(estados_sorted.values()),
+            y=list(estados_sorted.keys()),
+            orientation='h',
+            marker_color=colores_barra,
+            text=[f"{v:.0f} min" for v in estados_sorted.values()],
+            textposition='outside', textfont=dict(size=11)
+        ))
+        fig_hrs.update_layout(
+            title=f"Minutos por Estado — {agente_sel_hrs} — {titulo_hrs}",
+            height=500, plot_bgcolor="white", xaxis_title="Minutos"
+        )
+        st.plotly_chart(fig_hrs, use_container_width=True, key="fig_hrs")
+
+        col_pie1, col_pie2 = st.columns(2)
+        with col_pie1:
+            prod_min   = sum(v for k,v in estados_min.items() if k in productivas_labels)
+            improd_min = sum(v for k,v in estados_min.items() if k not in productivas_labels)
+            fig_pie = go.Figure(go.Pie(
+                labels=['✅ Productivas','❌ Improductivas'],
+                values=[prod_min, improd_min], hole=0.4,
+                marker_colors=['#2ecc71','#e74c3c']
+            ))
+            fig_pie.update_traces(textinfo='label+percent+value',
+                                 texttemplate='%{label}<br>%{percent}<br>%{value:.0f} min')
+            fig_pie.update_layout(title="Productivo vs Improductivo", height=400)
+            st.plotly_chart(fig_pie, use_container_width=True, key="fig_pie")
+
+        with col_pie2:
+            improd_estados = {k:v for k,v in estados_min.items()
+                             if k not in productivas_labels and v > 0}
+            if improd_estados:
+                fig_pie2 = go.Figure(go.Pie(
+                    labels=list(improd_estados.keys()),
+                    values=list(improd_estados.values()), hole=0.4
+                ))
+                fig_pie2.update_traces(textinfo='label+percent')
+                fig_pie2.update_layout(title="🔍 Desglose Improductivas", height=400)
+                st.plotly_chart(fig_pie2, use_container_width=True, key="fig_pie2")
 
     st.markdown("---")
-
-    # Tabla detalle por estado
-    st.markdown("#### 📋 Detalle por Estado")
-    estados_nombres = {
+    st.markdown("#### 📋 Tabla Detalle por Estado")
+    estados_nombres_tabla = {
         'Conectado_hrs': '🔌 Conectado',
-        'Turno_hrs': '📅 Turno Programado',
-        'Hrs_Productivas': '✅ Total Productivas',
-        'Hrs_Improductivas': '❌ Total Improductivas',
+        'Turno_hrs': '📅 Turno',
+        'Hrs_Productivas': '✅ Productivas',
+        'Hrs_Improductivas': '❌ Improductivas',
         'EnCola_hrs': '📞 En Cola',
-        'Inactivo_hrs': '💤 Inactivo/Disponible',
+        'Inactivo_hrs': '💤 Inactivo',
         'Interactuando_hrs': '🗣️ Interactuando',
         'Ausente_hrs': '🚫 Ausente',
         'NoResponde_hrs': '📵 No Responde',
-        'FueraCola_hrs': '🚪 Fuera de Cola',
+        'FueraCola_hrs': '🚪 Fuera Cola',
         'Descanso_hrs': '☕ Descanso',
         'Comida_hrs': '🍽️ Comida',
         'Reunion_hrs': '👥 Reunión',
@@ -512,94 +575,7 @@ with tab5:
         'Descanso2_hrs': '😴 Descanso 2',
         'PausaActiva_hrs': '🏃 Pausa Activa'
     }
-
-    cols_mostrar = list(estados_nombres.keys())
-    cols_disponibles = [c for c in cols_mostrar if c in data_hrs.columns]
-
-    tabla_horas = data_hrs[['NOMBRE'] + cols_disponibles].copy()
-    tabla_horas = tabla_horas.rename(columns=estados_nombres)
-    st.dataframe(tabla_horas, use_container_width=True)
-
-    st.markdown("---")
-
-    # Gráfico de fuga de horas (solo cuando hay un agente seleccionado)
-    if agente_sel_hrs != "Todos":
-        st.markdown(f"#### 🔍 Desglose de Horas — {agente_sel_hrs}")
-
-        row = data_hrs.iloc[0]
-        estados_graf = {
-            '📞 En Cola': row.get('EnCola_hrs', '00:00:00'),
-            '💤 Inactivo': row.get('Inactivo_hrs', '00:00:00'),
-            '🗣️ Interactuando': row.get('Interactuando_hrs', '00:00:00'),
-            '🚫 Ausente': row.get('Ausente_hrs', '00:00:00'),
-            '📵 No Responde': row.get('NoResponde_hrs', '00:00:00'),
-            '🚪 Fuera Cola': row.get('FueraCola_hrs', '00:00:00'),
-            '☕ Descanso': row.get('Descanso_hrs', '00:00:00'),
-            '🍽️ Comida': row.get('Comida_hrs', '00:00:00'),
-            '👥 Reunión': row.get('Reunion_hrs', '00:00:00'),
-            '📚 Capacitación': row.get('Capacitacion_hrs', '00:00:00'),
-            '📝 Gestión': row.get('Gestion_hrs', '00:00:00'),
-            '📲 Llamada Manual': row.get('LlamadaManual_hrs', '00:00:00'),
-            '🚽 Baño': row.get('Bano_hrs', '00:00:00'),
-            '😴 Descanso 2': row.get('Descanso2_hrs', '00:00:00'),
-            '🏃 Pausa Activa': row.get('PausaActiva_hrs', '00:00:00'),
-        }
-
-        # Convertir HH:MM:SS a minutos para graficar
-        def hhmmss_a_min(t):
-            try:
-                partes = str(t).split(':')
-                return int(partes[0])*60 + int(partes[1]) + int(partes[2])/60
-            except: return 0
-
-        estados_min = {k: hhmmss_a_min(v) for k, v in estados_graf.items() if hhmmss_a_min(v) > 0}
-        estados_sorted = dict(sorted(estados_min.items(), key=lambda x: x[1], reverse=True))
-
-        productivas_keys = ['📞 En Cola','💤 Inactivo','🗣️ Interactuando']
-        colores_barra = ['#2ecc71' if k in productivas_keys else '#e74c3c'
-                        for k in estados_sorted.keys()]
-
-        fig_hrs = go.Figure(go.Bar(
-            x=list(estados_sorted.values()),
-            y=list(estados_sorted.keys()),
-            orientation='h',
-            marker_color=colores_barra,
-            text=[f"{v:.0f} min" for v in estados_sorted.values()],
-            textposition='outside',
-            textfont=dict(size=11)
-        ))
-        fig_hrs.update_layout(
-            title=f"Minutos por Estado — {agente_sel_hrs} — {titulo_hrs}",
-            height=500, plot_bgcolor="white",
-            xaxis_title="Minutos"
-        )
-        st.plotly_chart(fig_hrs, use_container_width=True)
-
-        # Pie productivo vs improductivo
-        col_pie1, col_pie2 = st.columns(2)
-        with col_pie1:
-            prod_min = sum(v for k,v in estados_min.items() if k in productivas_keys)
-            improd_min = sum(v for k,v in estados_min.items() if k not in productivas_keys)
-            fig_pie = go.Figure(go.Pie(
-                labels=['✅ Productivas','❌ Improductivas'],
-                values=[prod_min, improd_min],
-                hole=0.4,
-                marker_colors=['#2ecc71','#e74c3c']
-            ))
-            fig_pie.update_traces(textinfo='label+percent+value',
-                                 texttemplate='%{label}<br>%{percent}<br>%{value:.0f} min')
-            fig_pie.update_layout(title="Distribución Productivo vs Improductivo", height=400)
-            st.plotly_chart(fig_pie, use_container_width=True)
-
-        with col_pie2:
-            # Solo improductivas
-            improd_estados = {k:v for k,v in estados_min.items() if k not in productivas_keys and v > 0}
-            if improd_estados:
-                fig_pie2 = go.Figure(go.Pie(
-                    labels=list(improd_estados.keys()),
-                    values=list(improd_estados.values()),
-                    hole=0.4
-                ))
-                fig_pie2.update_traces(textinfo='label+percent')
-                fig_pie2.update_layout(title="🔍 Desglose Improductivas", height=400)
-                st.plotly_chart(fig_pie2, use_container_width=True)
+    cols_disp = [c for c in estados_nombres_tabla.keys() if c in data_hrs.columns]
+    tabla_horas = data_hrs[['NOMBRE'] + cols_disp].copy()
+    tabla_horas = tabla_horas.rename(columns=estados_nombres_tabla)
+    st.dataframe(tabla_horas, use_container_width=True, key="tabla_horas")
