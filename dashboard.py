@@ -6,6 +6,7 @@ from sklearn.linear_model import LinearRegression
 import numpy as np
 import requests
 from io import BytesIO
+from datetime import date
 
 st.set_page_config(
     page_title="Dashboard KPI — Servicio Técnico ECC",
@@ -52,6 +53,44 @@ colores_semaforo = {
     "🔴 Crítico": "#e74c3c",
     "Sin datos": "#95a5a6"
 }
+
+def hhmmss_a_min(t):
+    try:
+        partes = str(t).split(':')
+        return int(partes[0])*60 + int(partes[1]) + float(partes[2])/60
+    except: return 0
+
+def min_a_hhmmss(minutos):
+    try:
+        h = int(minutos // 60)
+        m = int(minutos % 60)
+        s = int((minutos % 1) * 60)
+        return f"{h:02d}:{m:02d}:{s:02d}"
+    except: return "00:00:00"
+
+def antiguedad_texto(fecha_ingreso):
+    try:
+        if pd.isna(fecha_ingreso): return "Sin dato"
+        if isinstance(fecha_ingreso, str):
+            fecha_ingreso = pd.to_datetime(fecha_ingreso)
+        hoy = date.today()
+        if hasattr(fecha_ingreso, 'date'):
+            fecha_ingreso = fecha_ingreso.date()
+        años = hoy.year - fecha_ingreso.year
+        meses = hoy.month - fecha_ingreso.month
+        dias = hoy.day - fecha_ingreso.day
+        if dias < 0:
+            meses -= 1
+            dias += 30
+        if meses < 0:
+            años -= 1
+            meses += 12
+        partes = []
+        if años > 0: partes.append(f"{años} año{'s' if años > 1 else ''}")
+        if meses > 0: partes.append(f"{meses} mes{'es' if meses > 1 else ''}")
+        if dias > 0 and años == 0: partes.append(f"{dias} día{'s' if dias > 1 else ''}")
+        return ", ".join(partes) if partes else "Recién ingresado"
+    except: return "Sin dato"
 
 st.title("📊 Dashboard KPI — Servicio Técnico ECC")
 st.markdown("---")
@@ -116,16 +155,14 @@ def metrica_color(col, label, valor, tipo="utilizacion"):
         <p style='margin:0; font-size:13px; color:gray'>{label}</p>
         <p style='margin:0; font-size:28px; font-weight:bold'>{valor:.1f}%</p>
         <p style='margin:0; font-size:12px'>{nivel}</p>
-    </div>
-    """, unsafe_allow_html=True)
+    </div>""", unsafe_allow_html=True)
 
 metrica_color(col2, "📈 Utilización", util_prom, "utilizacion")
 metrica_color(col3, "✅ Adhesión",    adh_prom,  "adhesion")
 metrica_color(col4, "⚡ Ocupación",   ocu_prom,  "ocupacion")
 st.markdown("---")
 
-meses_orden = ["Septiembre","Octubre","Noviembre","Diciembre",
-               "Enero","Febrero","Marzo"]
+meses_orden = ["Septiembre","Octubre","Noviembre","Diciembre","Enero","Febrero","Marzo"]
 
 tab1, tab2, tab3, tab4, tab5 = st.tabs([
     "📊 Resumen Mensual",
@@ -155,7 +192,7 @@ with tab1:
     with col_der:
         st.subheader("🚦 Distribución Semáforo")
         dist = df["Semaforo"].value_counts().reset_index()
-        dist.columns = ["Nivel", "Agentes"]
+        dist.columns = ["Nivel","Agentes"]
         fig2 = px.pie(dist, values="Agentes", names="Nivel",
                      color="Nivel", color_discrete_map=colores_semaforo, hole=0.4)
         fig2.update_traces(textinfo="label+percent+value", textfont=dict(size=12))
@@ -254,8 +291,7 @@ with tab2:
 
     with col_r2:
         st.markdown("#### 🥇 Top 3 Mejor")
-        top3 = data_jp.sort_values("Utilizacion", ascending=False).head(3)
-        for i, (_, row) in enumerate(top3.iterrows()):
+        for i, (_, row) in enumerate(data_jp.sort_values("Utilizacion", ascending=False).head(3).iterrows()):
             medalla = ["🥇","🥈","🥉"][i]
             color = colores_semaforo[semaforo(row["Utilizacion"],"utilizacion")]
             nombre_corto = " ".join(row["JP"].split()[:2])
@@ -267,8 +303,7 @@ with tab2:
             </div>""", unsafe_allow_html=True)
 
         st.markdown("#### ⚠️ Top 3 Menor")
-        bot3 = data_jp.sort_values("Utilizacion").head(3)
-        for _, row in bot3.iterrows():
+        for _, row in data_jp.sort_values("Utilizacion").head(3).iterrows():
             color = colores_semaforo[semaforo(row["Utilizacion"],"utilizacion")]
             nombre_corto = " ".join(row["JP"].split()[:2])
             st.markdown(f"""
@@ -301,7 +336,7 @@ with tab2:
     metrica_color(col_m4, "⚡ Ocupación", data_ag_fil["Ocupacion"].mean(), "ocupacion")
 
 # ══════════════════════════════════════════
-# TAB 3
+# TAB 3 — EVOLUCIÓN POR AGENTE
 # ══════════════════════════════════════════
 with tab3:
     st.subheader("👤 Evolución Histórica por Agente")
@@ -318,13 +353,24 @@ with tab3:
     ag = hist_fil[hist_fil["Nombre_agente"] == agente_sel].iloc[0]
     estado    = ag.get("ESTADO", "Sin dato")
     contrato  = ag.get("HRS_CONTRATO", "Sin dato")
-    ant_meses = ag.get("Antiguedad_meses", None)
-    ant_str   = f"{int(ant_meses)} meses" if pd.notna(ant_meses) else "Sin dato"
-    tramo     = ag.get("Tramo_Antiguedad", "") if "Tramo_Antiguedad" in ag else ""
+    fecha_ing = ag.get("FECHA_INGRESO", None)
+    ant_texto = antiguedad_texto(fecha_ing)
+    tramo     = ag.get("Tramo_Antiguedad","") if "Tramo_Antiguedad" in ag else ""
     promedio  = ag.get("Promedio_historico", 0)
-    tendencia = ag.get("Tendencia", "Sin dato")
-    sem_ag    = ag.get("Semaforo_historico", "Sin datos")
-    color_ag  = colores_semaforo.get(sem_ag, "#95a5a6")
+    tendencia = ag.get("Tendencia","Sin dato")
+    sem_ag    = ag.get("Semaforo_historico","Sin datos")
+    color_ag  = colores_semaforo.get(sem_ag,"#95a5a6")
+
+    # Horas del agente desde hrs_mes
+    ag_hrs = hrs_mes[hrs_mes["NOMBRE"] == agente_sel]
+    if not ag_hrs.empty:
+        r = ag_hrs.iloc[0]
+        hrs_conectado    = r.get("Conectado_hrs","—")
+        hrs_programadas  = r.get("Turno_hrs","—")
+        hrs_productivas  = r.get("Hrs_Productivas","—")
+        hrs_improductivas= r.get("Hrs_Improductivas","—")
+    else:
+        hrs_conectado = hrs_programadas = hrs_productivas = hrs_improductivas = "—"
 
     st.markdown(f"""
     <div style='background:{color_ag}20; border-left:5px solid {color_ag};
@@ -333,9 +379,15 @@ with tab3:
         <p style='margin:5px 0'>
             📋 Estado: <b>{estado}</b> &nbsp;|&nbsp;
             ⏰ Contrato: <b>{contrato} hrs</b> &nbsp;|&nbsp;
-            📅 Antigüedad: <b>{ant_str}</b> ({tramo}) &nbsp;|&nbsp;
+            📅 Antigüedad: <b>{ant_texto}</b> &nbsp;|&nbsp;
             📊 Promedio histórico: <b>{promedio:.1f}%</b> &nbsp;|&nbsp;
             {tendencia} &nbsp;|&nbsp; {sem_ag}
+        </p>
+        <p style='margin:5px 0; font-size:13px'>
+            🔌 Conectado: <b>{hrs_conectado}</b> &nbsp;|&nbsp;
+            📅 Programado: <b>{hrs_programadas}</b> &nbsp;|&nbsp;
+            ✅ Productivas: <b>{hrs_productivas}</b> &nbsp;|&nbsp;
+            ❌ Improductivas: <b>{hrs_improductivas}</b>
         </p>
     </div>""", unsafe_allow_html=True)
 
@@ -420,7 +472,7 @@ with tab4:
     st.dataframe(tabla_mostrar, use_container_width=True, key="tabla_completa")
 
 # ══════════════════════════════════════════
-# TAB 5
+# TAB 5 — CONTROL DE HORAS
 # ══════════════════════════════════════════
 with tab5:
     st.subheader("⏱️ Control de Horas — Análisis de Fuga")
@@ -453,90 +505,116 @@ with tab5:
 
     st.markdown(f"### 📊 Resumen de Horas — {titulo_hrs}")
 
+    # Etiquetas de estados con nombres correctos
+    estados_nombres = {
+        'Conectado_hrs':      '🔌 Conectado',
+        'Turno_hrs':          '📅 Turno Programado',
+        'Hrs_Productivas':    '✅ Total Productivas',
+        'Hrs_Improductivas':  '❌ Total Improductivas',
+        'EnCola_hrs':         '📞 En Cola',
+        'Ocioso_hrs':         '💤 Ocioso',
+        'Interactuando_hrs':  '🗣️ Interactuando',
+        'Bano_hrs':           '🚽 Baño',
+        'AusenteOcupado_hrs': '🚫 Ausente Ocupado',
+        'Descanso_hrs':       '☕ Descanso',
+        'Comida_hrs':         '🍽️ Comida',
+        'Reunion_hrs':        '👥 Reunión',
+        'Capacitacion_hrs':   '📚 Capacitación',
+        'NoResponde_hrs':     '📵 No Responde',
+        'FueraCola_hrs':      '🚪 Fuera de Cola',
+        'Gestion_hrs':        '📝 Gestión',
+        'LlamadaManual_hrs':  '📲 Llamada Manual',
+        'PausaActiva_hrs':    '🏃 Pausa Activa'
+    }
+
     if agente_sel_hrs != "Todos" and len(data_hrs) > 0:
         row_hrs = data_hrs.iloc[0]
+
         col_h1, col_h2, col_h3, col_h4 = st.columns(4)
         col_h1.markdown(f"""
         <div style='background:#3498db20; border-left:5px solid #3498db; padding:10px; border-radius:5px'>
             <p style='margin:0; font-size:13px; color:gray'>🔌 Hrs Conexión</p>
-            <p style='margin:0; font-size:20px; font-weight:bold'>{row_hrs.get('Conectado_hrs','—')}</p>
+            <p style='margin:0; font-size:18px; font-weight:bold'>{row_hrs.get('Conectado_hrs','—')}</p>
         </div>""", unsafe_allow_html=True)
         col_h2.markdown(f"""
         <div style='background:#9b59b620; border-left:5px solid #9b59b6; padding:10px; border-radius:5px'>
             <p style='margin:0; font-size:13px; color:gray'>📅 Hrs Programadas</p>
-            <p style='margin:0; font-size:20px; font-weight:bold'>{row_hrs.get('Turno_hrs','—')}</p>
+            <p style='margin:0; font-size:18px; font-weight:bold'>{row_hrs.get('Turno_hrs','—')}</p>
         </div>""", unsafe_allow_html=True)
         col_h3.markdown(f"""
         <div style='background:#2ecc7120; border-left:5px solid #2ecc71; padding:10px; border-radius:5px'>
             <p style='margin:0; font-size:13px; color:gray'>✅ Hrs Productivas</p>
-            <p style='margin:0; font-size:20px; font-weight:bold'>{row_hrs.get('Hrs_Productivas','—')}</p>
+            <p style='margin:0; font-size:18px; font-weight:bold'>{row_hrs.get('Hrs_Productivas','—')}</p>
         </div>""", unsafe_allow_html=True)
         col_h4.markdown(f"""
         <div style='background:#e74c3c20; border-left:5px solid #e74c3c; padding:10px; border-radius:5px'>
             <p style='margin:0; font-size:13px; color:gray'>❌ Hrs Improductivas</p>
-            <p style='margin:0; font-size:20px; font-weight:bold'>{row_hrs.get('Hrs_Improductivas','—')}</p>
+            <p style='margin:0; font-size:18px; font-weight:bold'>{row_hrs.get('Hrs_Improductivas','—')}</p>
         </div>""", unsafe_allow_html=True)
 
         st.markdown("---")
 
-        estados_nombres = {
-            'EnCola_hrs': '📞 En Cola',
-            'Inactivo_hrs': '💤 Inactivo/Disponible',
-            'Interactuando_hrs': '🗣️ Interactuando',
-            'Ausente_hrs': '🚫 Ausente',
-            'NoResponde_hrs': '📵 No Responde',
-            'FueraCola_hrs': '🚪 Fuera de Cola',
-            'Descanso_hrs': '☕ Descanso',
-            'Comida_hrs': '🍽️ Comida',
-            'Reunion_hrs': '👥 Reunión',
-            'Capacitacion_hrs': '📚 Capacitación',
-            'Gestion_hrs': '📝 Gestión',
-            'LlamadaManual_hrs': '📲 Llamada Manual',
-            'Bano_hrs': '🚽 Baño',
-            'Descanso2_hrs': '😴 Descanso 2',
-            'PausaActiva_hrs': '🏃 Pausa Activa'
+        # Gráfico de barras por estado en HH:MM:SS + %
+        estados_graf = {
+            '📞 En Cola':         row_hrs.get('EnCola_hrs','00:00:00'),
+            '💤 Ocioso':          row_hrs.get('Ocioso_hrs','00:00:00'),
+            '🗣️ Interactuando':  row_hrs.get('Interactuando_hrs','00:00:00'),
+            '🚽 Baño':            row_hrs.get('Bano_hrs','00:00:00'),
+            '🚫 Ausente Ocupado': row_hrs.get('AusenteOcupado_hrs','00:00:00'),
+            '☕ Descanso':        row_hrs.get('Descanso_hrs','00:00:00'),
+            '🍽️ Comida':         row_hrs.get('Comida_hrs','00:00:00'),
+            '👥 Reunión':         row_hrs.get('Reunion_hrs','00:00:00'),
+            '📚 Capacitación':    row_hrs.get('Capacitacion_hrs','00:00:00'),
+            '📵 No Responde':     row_hrs.get('NoResponde_hrs','00:00:00'),
+            '🚪 Fuera Cola':      row_hrs.get('FueraCola_hrs','00:00:00'),
+            '📝 Gestión':         row_hrs.get('Gestion_hrs','00:00:00'),
+            '📲 Llamada Manual':  row_hrs.get('LlamadaManual_hrs','00:00:00'),
+            '🏃 Pausa Activa':    row_hrs.get('PausaActiva_hrs','00:00:00'),
         }
 
-        def hhmmss_a_min(t):
-            try:
-                partes = str(t).split(':')
-                return int(partes[0])*60 + int(partes[1]) + int(partes[2])/60
-            except: return 0
-
-        estados_min = {v: hhmmss_a_min(row_hrs.get(k, '00:00:00'))
-                      for k, v in estados_nombres.items()}
+        estados_min = {k: hhmmss_a_min(v) for k, v in estados_graf.items()}
+        total_min = sum(estados_min.values())
         estados_min = {k: v for k, v in estados_min.items() if v > 0}
         estados_sorted = dict(sorted(estados_min.items(), key=lambda x: x[1], reverse=True))
 
-        productivas_labels = ['📞 En Cola','💤 Inactivo/Disponible','🗣️ Interactuando']
+        productivas_labels = ['📞 En Cola','💤 Ocioso','🗣️ Interactuando']
         colores_barra = ['#2ecc71' if k in productivas_labels else '#e74c3c'
                         for k in estados_sorted.keys()]
+
+        # Texto con HH:MM:SS y %
+        textos_barra = []
+        for k, v in estados_sorted.items():
+            pct = (v / total_min * 100) if total_min > 0 else 0
+            textos_barra.append(f"{min_a_hhmmss(v)} ({pct:.1f}%)")
 
         fig_hrs = go.Figure(go.Bar(
             x=list(estados_sorted.values()),
             y=list(estados_sorted.keys()),
             orientation='h',
             marker_color=colores_barra,
-            text=[f"{v:.0f} min" for v in estados_sorted.values()],
-            textposition='outside', textfont=dict(size=11)
+            text=textos_barra,
+            textposition='outside',
+            textfont=dict(size=11)
         ))
         fig_hrs.update_layout(
-            title=f"Minutos por Estado — {agente_sel_hrs} — {titulo_hrs}",
-            height=500, plot_bgcolor="white", xaxis_title="Minutos"
+            title=f"Horas por Estado — {agente_sel_hrs} — {titulo_hrs}",
+            height=520, plot_bgcolor="white", xaxis_title="Minutos"
         )
         st.plotly_chart(fig_hrs, use_container_width=True, key="fig_hrs")
 
+        # Gráfico productivo vs improductivo
         col_pie1, col_pie2 = st.columns(2)
         with col_pie1:
             prod_min   = sum(v for k,v in estados_min.items() if k in productivas_labels)
             improd_min = sum(v for k,v in estados_min.items() if k not in productivas_labels)
+            prod_hhmmss   = min_a_hhmmss(prod_min)
+            improd_hhmmss = min_a_hhmmss(improd_min)
             fig_pie = go.Figure(go.Pie(
-                labels=['✅ Productivas','❌ Improductivas'],
+                labels=[f'✅ Productivas\n{prod_hhmmss}', f'❌ Improductivas\n{improd_hhmmss}'],
                 values=[prod_min, improd_min], hole=0.4,
                 marker_colors=['#2ecc71','#e74c3c']
             ))
-            fig_pie.update_traces(textinfo='label+percent+value',
-                                 texttemplate='%{label}<br>%{percent}<br>%{value:.0f} min')
+            fig_pie.update_traces(textinfo='label+percent', textfont=dict(size=12))
             fig_pie.update_layout(title="Productivo vs Improductivo", height=400)
             st.plotly_chart(fig_pie, use_container_width=True, key="fig_pie")
 
@@ -544,38 +622,18 @@ with tab5:
             improd_estados = {k:v for k,v in estados_min.items()
                              if k not in productivas_labels and v > 0}
             if improd_estados:
+                improd_textos = [f"{k}\n{min_a_hhmmss(v)}" for k,v in improd_estados.items()]
                 fig_pie2 = go.Figure(go.Pie(
-                    labels=list(improd_estados.keys()),
+                    labels=improd_textos,
                     values=list(improd_estados.values()), hole=0.4
                 ))
-                fig_pie2.update_traces(textinfo='label+percent')
+                fig_pie2.update_traces(textinfo='percent', textfont=dict(size=11))
                 fig_pie2.update_layout(title="🔍 Desglose Improductivas", height=400)
                 st.plotly_chart(fig_pie2, use_container_width=True, key="fig_pie2")
 
     st.markdown("---")
     st.markdown("#### 📋 Tabla Detalle por Estado")
-    estados_nombres_tabla = {
-        'Conectado_hrs': '🔌 Conectado',
-        'Turno_hrs': '📅 Turno',
-        'Hrs_Productivas': '✅ Productivas',
-        'Hrs_Improductivas': '❌ Improductivas',
-        'EnCola_hrs': '📞 En Cola',
-        'Inactivo_hrs': '💤 Inactivo',
-        'Interactuando_hrs': '🗣️ Interactuando',
-        'Ausente_hrs': '🚫 Ausente',
-        'NoResponde_hrs': '📵 No Responde',
-        'FueraCola_hrs': '🚪 Fuera Cola',
-        'Descanso_hrs': '☕ Descanso',
-        'Comida_hrs': '🍽️ Comida',
-        'Reunion_hrs': '👥 Reunión',
-        'Capacitacion_hrs': '📚 Capacitación',
-        'Gestion_hrs': '📝 Gestión',
-        'LlamadaManual_hrs': '📲 Llamada Manual',
-        'Bano_hrs': '🚽 Baño',
-        'Descanso2_hrs': '😴 Descanso 2',
-        'PausaActiva_hrs': '🏃 Pausa Activa'
-    }
-    cols_disp = [c for c in estados_nombres_tabla.keys() if c in data_hrs.columns]
+    cols_disp = [c for c in estados_nombres.keys() if c in data_hrs.columns]
     tabla_horas = data_hrs[['NOMBRE'] + cols_disp].copy()
-    tabla_horas = tabla_horas.rename(columns=estados_nombres_tabla)
+    tabla_horas = tabla_horas.rename(columns=estados_nombres)
     st.dataframe(tabla_horas, use_container_width=True, key="tabla_horas")
