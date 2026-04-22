@@ -116,7 +116,7 @@ st.markdown(f"""
     <span style='font-size:16px'>
         📅 <b>Mes actual:</b> {hoy.strftime('%B %Y')} &nbsp;|&nbsp;
         🕐 <b>Actualizado:</b> {hoy.strftime('%d/%m/%Y %H:%M')} &nbsp;|&nbsp;
-        👩‍💼 <b>Creado por:</b> Paola Agüero — Analista de Control
+        👩‍💼 <b>Creado por:</b> Paola Agüero — Owner Capacidad Operativa
     </span>
 </div>
 """, unsafe_allow_html=True)
@@ -792,6 +792,6 @@ st.markdown("---")
 st.markdown("""
 <div style='text-align:center; color:gray; font-size:12px'>
     📊 Dashboard KPI — Servicio Técnico ECC &nbsp;|&nbsp;
-    👩‍💼 Desarrollado por: <b>Paola Agüero — Analista de Control ECC</b> &nbsp;|&nbsp;
+    👩‍💼 Desarrollado por: <b>Paola Agüero — Owner Capacidad Operativa ECC</b> &nbsp;|&nbsp;
     🐍 Powered by Python & Streamlit
 </div>""", unsafe_allow_html=True)
