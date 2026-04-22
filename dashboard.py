@@ -649,7 +649,7 @@ with tab4:
     cols_crit_hist = ["NOMBRE","JP","Mes","Utilizacion","Adhesion","Ocupacion"]
     cols_disp = [c for c in cols_crit_hist if c in criticos_hist.columns]
     tabla_crit_hist = criticos_hist[cols_disp].sort_values(
-        ["NOMBRE","Orden_Mes"] if "Orden_Mes" in criticos_hist.columns else ["NOMBRE"]
+        ["NOMBRE"]
     ).copy()
     for col in ["Utilizacion","Adhesion","Ocupacion"]:
         if col in tabla_crit_hist.columns:
