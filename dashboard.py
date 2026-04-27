@@ -106,9 +106,6 @@ def regresion_3meses(valores, meses):
         return [f"Proj. {i+1}" for i in range(3)], preds.tolist()
     except: return [], []
 
-# =============================================
-# TÍTULO Y SUBTÍTULO DINÁMICO
-# =============================================
 st.title("📊 Dashboard KPI — Servicio Técnico ECC")
 hoy = datetime.now()
 st.markdown(f"""
@@ -123,7 +120,6 @@ st.markdown(f"""
 """, unsafe_allow_html=True)
 st.markdown("---")
 
-# Inicializar cache_key en session_state
 if 'cache_key' not in st.session_state:
     st.session_state.cache_key = int(time.time())
 
@@ -153,7 +149,6 @@ resumen["Semaforo"]     = resumen["Utilizacion"].apply(lambda x: semaforo(x,"uti
 resumen["Semaforo_Adh"] = resumen["Adhesion"].apply(lambda x: semaforo(x,"adhesion"))
 resumen["Semaforo_Ocu"] = resumen["Ocupacion"].apply(lambda x: semaforo(x,"ocupacion"))
 
-# Sidebar
 st.sidebar.title("🔍 Filtros")
 supervisores = ["Todos"] + sorted(resumen["JP"].dropna().unique().tolist())
 supervisor_sel = st.sidebar.selectbox("Supervisor", supervisores)
@@ -209,9 +204,6 @@ tab1, tab2, tab3, tab4, tab5 = st.tabs([
     "⏱️ Control de Horas"
 ])
 
-# ══════════════════════════════════════════
-# TAB 1
-# ══════════════════════════════════════════
 with tab1:
     col_izq, col_der = st.columns(2)
     with col_izq:
@@ -260,7 +252,6 @@ with tab1:
             promedios.append(None)
 
     meses_fut, preds = regresion_3meses(promedios, meses_disp)
-
     fig4 = go.Figure()
     fig4.add_trace(go.Scatter(
         x=meses_disp, y=promedios, mode="lines+markers+text",
@@ -315,9 +306,6 @@ with tab1:
             tabla[col] = tabla[col].apply(lambda x: f"{x:.1f}%" if pd.notna(x) else "")
     st.dataframe(tabla, use_container_width=True, key="tabla1")
 
-# ══════════════════════════════════════════
-# TAB 2
-# ══════════════════════════════════════════
 with tab2:
     st.subheader("🏅 Ranking y Acumulado por Período")
     periodo = st.radio("Ver por:", ["Mes","Semana","Día"], horizontal=True, key="periodo_tab2")
@@ -430,9 +418,6 @@ with tab2:
     metrica_color(col_m3, "✅ Adhesión", data_ag_fil["Adhesion"].mean(), "adhesion")
     metrica_color(col_m4, "⚡ Ocupación", data_ag_fil["Ocupacion"].mean(), "ocupacion")
 
-# ══════════════════════════════════════════
-# TAB 3
-# ══════════════════════════════════════════
 with tab3:
     st.subheader("👤 Evolución Histórica por Agente")
     col_a, col_b = st.columns(2)
@@ -500,7 +485,6 @@ with tab3:
             vals_ag.append(None)
 
     meses_fut_ag, preds_ag = regresion_3meses(vals_ag, meses_ag)
-
     fig_m = go.Figure()
     fig_m.add_trace(go.Scatter(
         x=meses_ag, y=vals_ag, mode="lines+markers+text",
@@ -533,7 +517,6 @@ with tab3:
         semanas_list = ag_sem["Semana"].tolist()
         vals_sem = ag_sem["Utilizacion"].tolist()
         meses_fut_sem, preds_sem = regresion_3meses(vals_sem, semanas_list)
-
         fig_s = go.Figure()
         fig_s.add_trace(go.Bar(
             x=semanas_list, y=vals_sem, text=vals_sem,
@@ -579,12 +562,8 @@ with tab3:
         fig_d.update_layout(height=400, plot_bgcolor="white", yaxis_range=[0,115], xaxis_tickangle=-45)
         st.plotly_chart(fig_d, use_container_width=True, key="fig_d")
 
-# ══════════════════════════════════════════
-# TAB 4
-# ══════════════════════════════════════════
 with tab4:
     st.subheader("🔴 Agentes en Estado Crítico")
-
     criticos_hist = hist_mensual[hist_mensual['Cuartil_Util'] == 'Q1 — Crítico 🔴'].copy()
     if supervisor_sel != "Todos":
         criticos_hist = criticos_hist[criticos_hist["JP"] == supervisor_sel]
@@ -603,12 +582,11 @@ with tab4:
     criticos_mes = criticos_hist.groupby(['Mes','Orden_Mes']).agg(
         Agentes=('NOMBRE','nunique')
     ).reset_index().sort_values('Orden_Mes')
-
     fig_crit = go.Figure()
     fig_crit.add_trace(go.Bar(
         x=criticos_mes['Mes'], y=criticos_mes['Agentes'],
         text=criticos_mes['Agentes'], textposition='outside',
-        marker_color='#e74c3c', name='Agentes críticos'
+        marker_color='#e74c3c'
     ))
     fig_crit.update_layout(height=350, plot_bgcolor="white")
     st.plotly_chart(fig_crit, use_container_width=True, key="fig_crit")
@@ -636,9 +614,6 @@ with tab4:
                 lambda x: f"{x:.1f}%" if pd.notna(x) else "")
     st.dataframe(tabla_crit_hist, use_container_width=True, key="tabla_crit_hist")
 
-# ══════════════════════════════════════════
-# TAB 5 — CONTROL DE HORAS (CORREGIDO)
-# ══════════════════════════════════════════
 with tab5:
     st.subheader("⏱️ Control de Horas — Análisis de Fuga")
 
@@ -668,7 +643,6 @@ with tab5:
     if agente_sel_hrs != "Todos":
         data_hrs = data_hrs[data_hrs["NOMBRE"] == agente_sel_hrs]
 
-    # Estados a mostrar en gráficos (sin los totales)
     estados_detalle = {
         'EnCola_hrs':         '📞 En Cola',
         'Ocioso_hrs':         '💤 Ocioso',
@@ -686,7 +660,6 @@ with tab5:
         'PausaActiva_hrs':    '🏃 Pausa Activa'
     }
 
-    # Estados para tabla completa
     estados_tabla = {
         'Conectado_hrs':      '🔌 Conectado',
         'Turno_hrs':          '📅 Turno Programado',
@@ -716,7 +689,7 @@ with tab5:
 
         st.markdown("---")
 
-        # Gráfico por estado — solo estados individuales, NO los totales
+        # Gráfico estados individuales
         estados_min = {}
         for k, v in estados_detalle.items():
             val = row_hrs.get(k, '00:00:00')
@@ -726,10 +699,8 @@ with tab5:
 
         total_min = sum(estados_min.values())
         estados_sorted = dict(sorted(estados_min.items(), key=lambda x: x[1], reverse=True))
-
         colores_barra = ['#2ecc71' if k in productivas_labels else '#e74c3c'
                         for k in estados_sorted.keys()]
-
         textos_barra = [
             f"{min_a_hhmmss(v)} ({v/total_min*100:.1f}%)" if total_min > 0 else min_a_hhmmss(v)
             for v in estados_sorted.values()
@@ -747,12 +718,12 @@ with tab5:
         )
         st.plotly_chart(fig_hrs, use_container_width=True, key="fig_hrs")
 
-        # Gráfico productivo vs improductivo — CORREGIDO
+        # ── GRÁFICO PIE CORREGIDO ──
         col_pie1, col_pie2 = st.columns(2)
         with col_pie1:
-            # Solo sumar estados individuales productivos e improductivos
-            prod_min   = sum(v for k,v in estados_min.items() if k in productivas_labels)
-            improd_min = sum(v for k,v in estados_min.items() if k not in productivas_labels)
+            # Usar directamente los totales calculados correctamente
+            prod_min   = hhmmss_a_min(row_hrs.get('Hrs_Productivas', '00:00:00'))
+            improd_min = hhmmss_a_min(row_hrs.get('Hrs_Improductivas', '00:00:00'))
 
             fig_pie = go.Figure(go.Pie(
                 labels=[
@@ -786,7 +757,6 @@ with tab5:
     tabla_horas = tabla_horas.rename(columns=estados_tabla)
     st.dataframe(tabla_horas, use_container_width=True, key="tabla_horas")
 
-# Footer
 st.markdown("---")
 st.markdown("""
 <div style='text-align:center; color:gray; font-size:12px'>
