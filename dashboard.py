@@ -370,7 +370,6 @@ with tab2:
     st.markdown("---")
     st.markdown(f"### 👤 Top 10 Agentes — {titulo_periodo}")
     col_t1, col_t2 = st.columns(2)
-
     with col_t1:
         st.markdown("#### 🥇 Top 10 Mejor Performance")
         top10_mejor = data_ag.sort_values("Utilizacion", ascending=False).head(10).copy()
@@ -444,12 +443,15 @@ with tab3:
 
     ag_hrs = hrs_mes[hrs_mes["NOMBRE"] == agente_sel]
     hrs_conectado = hrs_programadas = hrs_productivas = hrs_improductivas = "—"
+    hrs_disponible = hrs_desconexion = "—"
     if not ag_hrs.empty:
         r = ag_hrs.iloc[0]
         hrs_conectado     = r.get("Conectado_hrs","—")
         hrs_programadas   = r.get("Turno_hrs","—")
         hrs_productivas   = r.get("Hrs_Productivas","—")
         hrs_improductivas = r.get("Hrs_Improductivas","—")
+        hrs_disponible    = r.get("Disponible_hrs","—")
+        hrs_desconexion   = r.get("Desconexion_hrs","—")
 
     st.markdown(f"""
     <div style='background:{color_ag}20; border-left:5px solid {color_ag};
@@ -469,6 +471,8 @@ with tab3:
             ❌ Improductivas: <b>{hrs_improductivas}</b>
         </p>
         <p style='margin:5px 0; font-size:13px'>
+            🟡 Disponible (fuera de cola): <b>{hrs_disponible}</b> &nbsp;|&nbsp;
+            ⚫ Desconexión total: <b>{hrs_desconexion}</b> &nbsp;|&nbsp;
             🔴 Veces en crítico: <b>{int(veces_crit)}</b> &nbsp;|&nbsp;
             📆 Meses: <b>{meses_crit}</b>
         </p>
@@ -643,10 +647,12 @@ with tab5:
     if agente_sel_hrs != "Todos":
         data_hrs = data_hrs[data_hrs["NOMBRE"] == agente_sel_hrs]
 
+    # Estados para gráfico — sin Fuera de Cola, con Disponible y Desconexión
     estados_detalle = {
         'EnCola_hrs':         '📞 En Cola',
         'Ocioso_hrs':         '💤 Ocioso',
         'Interactuando_hrs':  '🗣️ Interactuando',
+        'Disponible_hrs':     '🟡 Disponible (fuera de cola)',
         'Bano_hrs':           '🚽 Baño',
         'AusenteOcupado_hrs': '🚫 Ausente Ocupado',
         'Descanso_hrs':       '☕ Descanso',
@@ -654,10 +660,10 @@ with tab5:
         'Reunion_hrs':        '👥 Reunión',
         'Capacitacion_hrs':   '📚 Capacitación',
         'NoResponde_hrs':     '📵 No Responde',
-        'FueraCola_hrs':      '🚪 Fuera de Cola',
         'Gestion_hrs':        '📝 Gestión',
         'LlamadaManual_hrs':  '📲 Llamada Manual',
-        'PausaActiva_hrs':    '🏃 Pausa Activa'
+        'PausaActiva_hrs':    '🏃 Pausa Activa',
+        'Desconexion_hrs':    '⚫ Desconexión Total'
     }
 
     estados_tabla = {
@@ -665,7 +671,10 @@ with tab5:
         'Turno_hrs':          '📅 Turno Programado',
         'Hrs_Productivas':    '✅ Total Productivas',
         'Hrs_Improductivas':  '❌ Total Improductivas',
-        **estados_detalle
+        'Desconexion_hrs':    '⚫ Desconexión Total',
+        'Disponible_hrs':     '🟡 Disponible',
+        **{k:v for k,v in estados_detalle.items()
+           if k not in ['Desconexion_hrs','Disponible_hrs']}
     }
 
     productivas_labels = ['📞 En Cola','💤 Ocioso','🗣️ Interactuando']
@@ -673,23 +682,24 @@ with tab5:
     if agente_sel_hrs != "Todos" and len(data_hrs) > 0:
         row_hrs = data_hrs.iloc[0]
 
-        col_h1, col_h2, col_h3, col_h4 = st.columns(4)
+        col_h1, col_h2, col_h3, col_h4, col_h5, col_h6 = st.columns(6)
         for col_h, label, key_h, color_h in [
-            (col_h1, "🔌 Hrs Conexión",     "Conectado_hrs",    "#3498db"),
-            (col_h2, "📅 Hrs Programadas",  "Turno_hrs",        "#9b59b6"),
-            (col_h3, "✅ Hrs Productivas",  "Hrs_Productivas",  "#2ecc71"),
-            (col_h4, "❌ Hrs Improductivas","Hrs_Improductivas","#e74c3c")
+            (col_h1, "🔌 Conectado",      "Conectado_hrs",    "#3498db"),
+            (col_h2, "📅 Programado",     "Turno_hrs",        "#9b59b6"),
+            (col_h3, "✅ Productivas",    "Hrs_Productivas",  "#2ecc71"),
+            (col_h4, "❌ Improductivas", "Hrs_Improductivas","#e74c3c"),
+            (col_h5, "🟡 Disponible",    "Disponible_hrs",   "#f39c12"),
+            (col_h6, "⚫ Desconexión",   "Desconexion_hrs",  "#7f8c8d")
         ]:
             col_h.markdown(f"""
-            <div style='background:{color_h}20; border-left:5px solid {color_h};
-                        padding:10px; border-radius:5px'>
-                <p style='margin:0; font-size:13px; color:gray'>{label}</p>
-                <p style='margin:0; font-size:18px; font-weight:bold'>{row_hrs.get(key_h,'—')}</p>
+            <div style='background:{color_h}20; border-left:4px solid {color_h};
+                        padding:8px; border-radius:5px'>
+                <p style='margin:0; font-size:11px; color:gray'>{label}</p>
+                <p style='margin:0; font-size:15px; font-weight:bold'>{row_hrs.get(key_h,'—')}</p>
             </div>""", unsafe_allow_html=True)
 
         st.markdown("---")
 
-        # Gráfico estados individuales
         estados_min = {}
         for k, v in estados_detalle.items():
             val = row_hrs.get(k, '00:00:00')
@@ -699,8 +709,18 @@ with tab5:
 
         total_min = sum(estados_min.values())
         estados_sorted = dict(sorted(estados_min.items(), key=lambda x: x[1], reverse=True))
-        colores_barra = ['#2ecc71' if k in productivas_labels else '#e74c3c'
-                        for k in estados_sorted.keys()]
+
+        colores_barra = []
+        for k in estados_sorted.keys():
+            if k in productivas_labels:
+                colores_barra.append('#2ecc71')
+            elif k == '⚫ Desconexión Total':
+                colores_barra.append('#7f8c8d')
+            elif k == '🟡 Disponible (fuera de cola)':
+                colores_barra.append('#f39c12')
+            else:
+                colores_barra.append('#e74c3c')
+
         textos_barra = [
             f"{min_a_hhmmss(v)} ({v/total_min*100:.1f}%)" if total_min > 0 else min_a_hhmmss(v)
             for v in estados_sorted.values()
@@ -714,40 +734,44 @@ with tab5:
         ))
         fig_hrs.update_layout(
             title=f"Horas por Estado — {agente_sel_hrs} — {titulo_hrs}",
-            height=520, plot_bgcolor="white", xaxis_title="Minutos"
+            height=550, plot_bgcolor="white", xaxis_title="Minutos"
         )
         st.plotly_chart(fig_hrs, use_container_width=True, key="fig_hrs")
 
-        # ── GRÁFICO PIE CORREGIDO ──
         col_pie1, col_pie2 = st.columns(2)
         with col_pie1:
-            # Usar directamente los totales calculados correctamente
             prod_min   = hhmmss_a_min(row_hrs.get('Hrs_Productivas', '00:00:00'))
             improd_min = hhmmss_a_min(row_hrs.get('Hrs_Improductivas', '00:00:00'))
+            descon_min = hhmmss_a_min(row_hrs.get('Desconexion_hrs', '00:00:00'))
+            dispon_min = hhmmss_a_min(row_hrs.get('Disponible_hrs', '00:00:00'))
 
             fig_pie = go.Figure(go.Pie(
                 labels=[
                     f'✅ Productivas\n{min_a_hhmmss(prod_min)}',
-                    f'❌ Improductivas\n{min_a_hhmmss(improd_min)}'
+                    f'❌ Improductivas\n{min_a_hhmmss(improd_min)}',
+                    f'🟡 Disponible\n{min_a_hhmmss(dispon_min)}',
+                    f'⚫ Desconexión\n{min_a_hhmmss(descon_min)}'
                 ],
-                values=[prod_min, improd_min],
+                values=[prod_min, improd_min, dispon_min, descon_min],
                 hole=0.4,
-                marker_colors=['#2ecc71','#e74c3c']
+                marker_colors=['#2ecc71','#e74c3c','#f39c12','#7f8c8d']
             ))
-            fig_pie.update_traces(textinfo='label+percent', textfont=dict(size=12))
-            fig_pie.update_layout(title="Productivo vs Improductivo", height=400)
+            fig_pie.update_traces(textinfo='label+percent', textfont=dict(size=11))
+            fig_pie.update_layout(title="Distribución de Horas", height=420)
             st.plotly_chart(fig_pie, use_container_width=True, key="fig_pie")
 
         with col_pie2:
             improd_estados = {k:v for k,v in estados_min.items()
-                             if k not in productivas_labels and v > 0}
+                             if k not in productivas_labels
+                             and k not in ['⚫ Desconexión Total','🟡 Disponible (fuera de cola)']
+                             and v > 0}
             if improd_estados:
                 fig_pie2 = go.Figure(go.Pie(
                     labels=list(improd_estados.keys()),
                     values=list(improd_estados.values()), hole=0.4
                 ))
                 fig_pie2.update_traces(textinfo='label+percent', textfont=dict(size=11))
-                fig_pie2.update_layout(title="🔍 Desglose Improductivas", height=400)
+                fig_pie2.update_layout(title="🔍 Desglose Improductivas", height=420)
                 st.plotly_chart(fig_pie2, use_container_width=True, key="fig_pie2")
 
     st.markdown("---")
