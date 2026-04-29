@@ -311,9 +311,10 @@ col5.markdown(f"""
 
 st.markdown("---")
 
-tab1, tab2, tab3, tab4, tab5 = st.tabs([
+tab1, tab2, tab3, tab4, tab5, tab6 = st.tabs([
     "📊 Resumen Mensual","🏅 Ranking y Acumulado",
-    "👤 Evolución por Agente","🔴 Agentes Críticos","⏱️ Control de Horas"
+    "👤 Evolución por Agente","🔴 Agentes Críticos","⏱️ Control de Horas",
+    "📖 Glosario de Métricas"
 ])
 
 # ══════════════════════════════════════════
@@ -893,6 +894,17 @@ with tab5:
         )
         st.plotly_chart(fig_hrs, use_container_width=True, key=f"fig_hrs_{key_prefix}")
 
+        # Nota contextual "No Responde"
+        st.markdown("""
+<div style='background:#2c3e5020; border-left:4px solid #3498db;
+            padding:10px; border-radius:5px; margin-bottom:12px; font-size:13px'>
+    📵 <b>Nota — Estado "No Responde":</b> Este estado es activado <b>automáticamente por el sistema IVR</b>
+    cuando una llamada queda en espera y el agente no retorna a la cola.
+    <b>No es seleccionado manualmente</b> por el agente. Un volumen elevado puede indicar
+    una falla puntual de Genesys Cloud o falta de alerta del agente. &nbsp;
+    ⚠️ <b>Este tiempo NO afecta el cálculo de Utilización.</b>
+</div>""", unsafe_allow_html=True)
+
         col_p1, col_p2 = st.columns(2)
         with col_p1:
             pm  = row_data_min.get('Hrs_Productivas', 0)
@@ -973,3 +985,201 @@ st.markdown("""
     👩‍💼 Desarrollado por: <b>Paola Agüero — Owner Capacidad Operativa</b> &nbsp;|&nbsp;
     🐍 Powered by Python & Streamlit
 </div>""", unsafe_allow_html=True)
+
+# ══════════════════════════════════════════
+# TAB 6 — GLOSARIO DE MÉTRICAS
+# ══════════════════════════════════════════
+with tab6:
+    st.subheader("📖 Glosario de Métricas — Indicadores de Eficiencia")
+    st.markdown("Referencia oficial de cálculos y definiciones utilizadas en este dashboard, según metodología de Capacidad Operativa ECC.")
+    st.markdown("---")
+
+    # ── Bloque visual: estructura de tiempos ──
+    st.markdown("### 🕐 Estructura de Tiempos")
+    st.markdown("""
+<div style='display:flex; gap:12px; flex-wrap:wrap; margin-bottom:20px'>
+
+  <div style='flex:1; min-width:200px; background:#2ecc7120; border:2px solid #2ecc71;
+              border-radius:10px; padding:14px; text-align:center'>
+    <p style='margin:0; font-size:13px; color:#2ecc71; font-weight:bold'>1️⃣ TIEMPO OCUPADO</p>
+    <p style='margin:6px 0 0 0; font-size:12px; color:#ccc'>
+      🗣️ Talking — Conversando con cliente<br>
+      ⏸️ HOLD — En espera<br>
+      📝 ACW — Trabajo post llamada
+    </p>
+  </div>
+
+  <div style='flex:1; min-width:200px; background:#3498db20; border:2px solid #3498db;
+              border-radius:10px; padding:14px; text-align:center'>
+    <p style='margin:0; font-size:13px; color:#3498db; font-weight:bold'>2️⃣ TIEMPO PRODUCTIVO</p>
+    <p style='margin:6px 0 0 0; font-size:12px; color:#ccc'>
+      = Tiempo Ocupado<br>
+      + 🟡 Disponible (En Cola / Ocioso)<br>
+      <span style='font-size:11px; color:#aaa'>Agente logueado y disponible para atender</span>
+    </p>
+  </div>
+
+  <div style='flex:1; min-width:200px; background:#9b59b620; border:2px solid #9b59b6;
+              border-radius:10px; padding:14px; text-align:center'>
+    <p style='margin:0; font-size:13px; color:#9b59b6; font-weight:bold'>3️⃣ TIEMPO LOGUEADO</p>
+    <p style='margin:6px 0 0 0; font-size:12px; color:#ccc'>
+      = Tiempo Productivo<br>
+      + ⚠️ Tiempos Improductivos<br>
+      <span style='font-size:11px; color:#aaa'>Todo el tiempo conectado al sistema</span>
+    </p>
+  </div>
+
+  <div style='flex:1; min-width:200px; background:#e74c3c20; border:2px solid #e74c3c;
+              border-radius:10px; padding:14px; text-align:center'>
+    <p style='margin:0; font-size:13px; color:#e74c3c; font-weight:bold'>📅 TIEMPO PROGRAMADO</p>
+    <p style='margin:6px 0 0 0; font-size:12px; color:#ccc'>
+      Turno planificado por WFM<br>
+      <span style='font-size:11px; color:#aaa'>Base para cálculo de Adhesión</span>
+    </p>
+  </div>
+
+</div>""", unsafe_allow_html=True)
+
+    # ── Auxiliares / Tiempos Not Ready ──
+    st.markdown("### 🔄 Auxiliares — Tiempos Not Ready")
+    col_aux1, col_aux2 = st.columns(2)
+    with col_aux1:
+        st.markdown("""
+<div style='background:#2ecc7115; border-left:4px solid #2ecc71; padding:12px; border-radius:8px'>
+    <p style='margin:0; font-size:13px; font-weight:bold; color:#2ecc71'>✅ Auxiliares Productivos</p>
+    <p style='margin:6px 0 0 0; font-size:12px; color:#ccc'>
+        👥 Reunión / Formación<br>
+        📚 Coaching / Capacitación<br>
+        📝 Back office / Gestión<br>
+        🏃 Pausa Activa
+    </p>
+    <p style='margin:8px 0 0 0; font-size:11px; color:#aaa'>
+        Son tiempos planificados que contribuyen al desarrollo del agente.
+    </p>
+</div>""", unsafe_allow_html=True)
+
+    with col_aux2:
+        st.markdown("""
+<div style='background:#e74c3c15; border-left:4px solid #e74c3c; padding:12px; border-radius:8px'>
+    <p style='margin:0; font-size:13px; font-weight:bold; color:#e74c3c'>❌ Auxiliares Improductivos</p>
+    <p style='margin:6px 0 0 0; font-size:12px; color:#ccc'>
+        ☕ Descanso / Almuerzo (exceso sobre lo planificado)<br>
+        🚽 Baño<br>
+        🚫 Ausente Ocupado<br>
+        📵 No Responde (automático IVR)<br>
+        📲 Llamada Manual
+    </p>
+    <p style='margin:8px 0 0 0; font-size:11px; color:#aaa'>
+        ⚠️ El descanso y comida dentro del tiempo planificado por perfil <b>no</b> se considera improductivo.
+    </p>
+</div>""", unsafe_allow_html=True)
+
+    st.markdown("---")
+
+    # ── Fórmulas KPI ──
+    st.markdown("### 📐 Fórmulas de Cálculo")
+    col_f1, col_f2, col_f3 = st.columns(3)
+
+    with col_f1:
+        st.markdown("""
+<div style='background:#3498db15; border:1px solid #3498db; border-radius:10px; padding:16px; height:100%'>
+    <p style='margin:0; font-size:14px; font-weight:bold; color:#3498db'>📈 Utilización (%)</p>
+    <div style='background:#ffffff15; border-radius:6px; padding:10px; margin:10px 0; text-align:center'>
+        <p style='margin:0; font-size:13px; color:white'>Tiempos Productivos</p>
+        <hr style='border-color:#555; margin:4px 0'>
+        <p style='margin:0; font-size:13px; color:white'>Tiempos Logueados</p>
+    </div>
+    <p style='margin:0; font-size:12px; color:#aaa'>
+        Mide qué porcentaje del tiempo logueado el agente estuvo en estado productivo.<br><br>
+        🎯 <b>Objetivo:</b> ≥ 85% (Óptimo)<br>
+        🟡 <b>Medio:</b> 75% – 84%<br>
+        🔴 <b>Crítico:</b> &lt; 75%
+    </p>
+</div>""", unsafe_allow_html=True)
+
+    with col_f2:
+        st.markdown("""
+<div style='background:#2ecc7115; border:1px solid #2ecc71; border-radius:10px; padding:16px; height:100%'>
+    <p style='margin:0; font-size:14px; font-weight:bold; color:#2ecc71'>✅ Adhesión (%)</p>
+    <div style='background:#ffffff15; border-radius:6px; padding:10px; margin:10px 0; text-align:center'>
+        <p style='margin:0; font-size:13px; color:white'>Tiempos Logueados</p>
+        <hr style='border-color:#555; margin:4px 0'>
+        <p style='margin:0; font-size:13px; color:white'>Tiempo Programado</p>
+    </div>
+    <p style='margin:0; font-size:12px; color:#aaa'>
+        Mide el cumplimiento del horario programado por WFM.<br><br>
+        🎯 <b>Objetivo:</b> ≥ 99% (Óptimo)<br>
+        🟡 <b>Medio:</b> 96.5% – 98.9%<br>
+        🔴 <b>Crítico:</b> &lt; 96.5%
+    </p>
+</div>""", unsafe_allow_html=True)
+
+    with col_f3:
+        st.markdown("""
+<div style='background:#e67e2215; border:1px solid #e67e22; border-radius:10px; padding:16px; height:100%'>
+    <p style='margin:0; font-size:14px; font-weight:bold; color:#e67e22'>⚡ Ocupación (%)</p>
+    <div style='background:#ffffff15; border-radius:6px; padding:10px; margin:10px 0; text-align:center'>
+        <p style='margin:0; font-size:13px; color:white'>Tiempo Ocupado</p>
+        <hr style='border-color:#555; margin:4px 0'>
+        <p style='margin:0; font-size:13px; color:white'>Tiempos Productivos</p>
+    </div>
+    <p style='margin:0; font-size:12px; color:#aaa'>
+        Mide la densidad de atención dentro del tiempo productivo.<br><br>
+        🎯 <b>Objetivo:</b> 50% – 55% (Óptimo)<br>
+        🟡 <b>Medio:</b> 40%–49% o 56%–65%<br>
+        🔴 <b>Crítico:</b> &lt; 40% o &gt; 65%
+    </p>
+</div>""", unsafe_allow_html=True)
+
+    st.markdown("---")
+
+    # ── Util. Recalculada ──
+    st.markdown("### 🎯 Utilización Recalculada — %Techo")
+    st.markdown("""
+<div style='background:#9b59b615; border-left:5px solid #9b59b6; padding:14px; border-radius:8px'>
+    <p style='margin:0; font-size:13px; font-weight:bold; color:#9b59b6'>
+        📊 ¿Qué es la Utilización Recalculada?
+    </p>
+    <p style='margin:8px 0 0 0; font-size:12px; color:#ccc'>
+        La utilización bruta compara al agente contra un objetivo estándar de 86%.
+        Sin embargo, cada perfil de contrato tiene un <b>techo real diferente</b>
+        según las horas disponibles una vez descontados sus descansos planificados.
+        La <b>Util. Rec.</b> ajusta la medición de cada agente contra su propio techo de perfil,
+        haciendo la comparación más justa.
+    </p>
+    <div style='background:#ffffff10; border-radius:6px; padding:10px; margin:10px 0; text-align:center; display:inline-block; width:100%'>
+        <p style='margin:0; font-size:13px; color:white'>
+            Promedio Utilización últimos 3 meses del agente
+        </p>
+        <hr style='border-color:#555; margin:4px 0'>
+        <p style='margin:0; font-size:13px; color:white'>
+            Techo de Perfil (según contrato y condición)
+        </p>
+        <p style='margin:6px 0 0 0; font-size:12px; color:#9b59b6'>× 100 → cap máximo 100%</p>
+    </div>
+    <p style='margin:8px 0 0 0; font-size:12px; color:#ccc'>
+        <b>Cuartilización basada en Util.Rec:</b> &nbsp;
+        🟢 Q4 ≥85% &nbsp;|&nbsp; ✅ Q3 75–84% &nbsp;|&nbsp; ⚠️ Q2 70–74% &nbsp;|&nbsp; 🔴 Q1 &lt;70%
+    </p>
+</div>""", unsafe_allow_html=True)
+
+    st.markdown("---")
+
+    # ── Descansos planificados por perfil ──
+    st.markdown("### ☕ Descansos Planificados por Perfil")
+    st.markdown("El exceso de descanso se calcula como: **Real − Planificado × Días trabajados** (solo positivo).")
+
+    descansos_tabla = pd.DataFrame([
+        {"Perfil":"42h sin convenio",          "Break 1":"15 min","Lunch":"45 min","Break 2":"15 min","Total día":"75 min"},
+        {"Perfil":"42h con convenio",          "Break 1":"20 min","Lunch":"50 min","Break 2":"20 min","Total día":"90 min"},
+        {"Perfil":"30h sin convenio",          "Break 1":"—",     "Lunch":"30 min","Break 2":"—",    "Total día":"30 min"},
+        {"Perfil":"30h con convenio",          "Break 1":"—",     "Lunch":"40 min","Break 2":"—",    "Total día":"40 min"},
+        {"Perfil":"42h sin conv. + Lactancia", "Break 1":"15 min","Lunch":"45 min","Break 2":"15 min","Total día":"75 min"},
+        {"Perfil":"42h con conv. + Lactancia", "Break 1":"20 min","Lunch":"50 min","Break 2":"20 min","Total día":"90 min"},
+        {"Perfil":"30h sin conv. + Lactancia", "Break 1":"—",     "Lunch":"30 min","Break 2":"—",    "Total día":"30 min"},
+        {"Perfil":"30h con conv. + Lactancia", "Break 1":"—",     "Lunch":"40 min","Break 2":"—",    "Total día":"40 min"},
+    ])
+    st.dataframe(descansos_tabla, use_container_width=True, hide_index=True, key="tabla_glosario_desc")
+
+    st.markdown("---")
+    st.caption("📌 Fuente: Metodología Capacidad Operativa ECC | Sistema Genesys Cloud")
