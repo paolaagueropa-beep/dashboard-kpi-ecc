@@ -33,6 +33,7 @@ def cargar_datos(cache_key):
         datos[hoja] = pd.read_excel(contenido, sheet_name=hoja)
     return datos
 
+# ── Funciones semáforo ──
 def semaforo_util(val):
     if pd.isna(val): return "Sin datos"
     if val >= 85: return "🟢 Óptimo"
@@ -64,6 +65,7 @@ colores_semaforo = {
     "Sin datos": "#95a5a6"
 }
 
+# ── Funciones horas ──
 def hhmmss_a_min(t):
     try:
         p = str(t).split(':')
@@ -77,10 +79,18 @@ def min_a_hhmmss(m):
     except: return "00:00:00"
 
 def min_a_horas(m):
-    try:
-        h = m / 60
-        return round(h, 2)
+    try: return round(m / 60, 2)
     except: return 0
+
+def agregar_horas_grupo(df, cols):
+    """Suma columnas HH:MM:SS de múltiples filas. Retorna dict col → minutos totales."""
+    result = {}
+    for col in cols:
+        if col in df.columns:
+            result[col] = df[col].apply(hhmmss_a_min).sum()
+        else:
+            result[col] = 0
+    return result
 
 def antiguedad_texto(fi):
     try:
@@ -151,14 +161,14 @@ with st.spinner("⏳ Cargando datos..."):
     except Exception as e:
         st.error(f"❌ Error: {e}"); st.stop()
 
-# ── Calcular Utilizacion_Rec por agente ──
-# Promedio últimos 3 meses por agente / Techo_Perfil
+# ── Calcular Utilizacion_Rec por agente (cap 100%) ──
 meses_orden = ["Septiembre","Octubre","Noviembre","Diciembre","Enero","Febrero","Marzo","Abril"]
 ultimos_3 = [m for m in meses_orden if m in hist_ag.columns][-3:]
 
 if ultimos_3 and 'Techo_Perfil' in hist_ag.columns:
     hist_ag['Prom_3m'] = hist_ag[ultimos_3].mean(axis=1)
     hist_ag['Utilizacion_Rec'] = (hist_ag['Prom_3m'] / hist_ag['Techo_Perfil'] * 100).round(1)
+    hist_ag['Utilizacion_Rec'] = hist_ag['Utilizacion_Rec'].clip(upper=100)  # ← cap 100%
 else:
     hist_ag['Prom_3m'] = None
     hist_ag['Utilizacion_Rec'] = None
@@ -168,12 +178,12 @@ resumen = resumen.merge(
     hist_ag[['NOMBRE','Prom_3m','Utilizacion_Rec','Techo_Perfil']],
     on='NOMBRE', how='left'
 )
+if 'Utilizacion_Rec' in resumen.columns:
+    resumen['Utilizacion_Rec'] = resumen['Utilizacion_Rec'].clip(upper=100)
 
 # Promedio últimos 3 meses del servicio
 top3_meses = [m for m in meses_orden if m in hist_ag.columns][-3:]
 if top3_meses:
-    prom_3m_servicio = round(hist_ag[top3_meses].mean().mean() * (100 if hist_ag[top3_meses].mean().mean() <= 1 else 1), 1)
-    # Si los valores son fracciones, multiplicar por 100
     sample_val = hist_ag[top3_meses[0]].dropna().mean() if len(hist_ag[top3_meses[0]].dropna()) > 0 else 0
     if sample_val <= 1:
         prom_3m_servicio = round(hist_ag[top3_meses].mean().mean() * 100, 1)
@@ -186,6 +196,14 @@ resumen["Semaforo"]     = resumen["Utilizacion"].apply(semaforo_util)
 resumen["Semaforo_Adh"] = resumen["Adhesion"].apply(semaforo_adh)
 resumen["Semaforo_Ocu"] = resumen["Ocupacion"].apply(semaforo_ocu)
 resumen["Semaforo_Rec"] = resumen["Utilizacion_Rec"].apply(semaforo_rec)
+
+# ── Calcular Utilizacion_Rec por jefatura (promedio agentes) ──
+if 'Utilizacion_Rec' in resumen.columns and 'JP' in resumen.columns:
+    jp_util_rec = resumen.groupby('JP')['Utilizacion_Rec'].mean().reset_index()
+    jp_util_rec.columns = ['JP', 'Utilizacion_Rec']
+    jefatura = jefatura.merge(jp_util_rec, on='JP', how='left')
+    jefatura['Utilizacion_Rec'] = jefatura['Utilizacion_Rec'].clip(upper=100)
+jefatura['Semaforo_Rec'] = jefatura['Utilizacion_Rec'].apply(semaforo_rec)
 
 # ── Sidebar ──
 st.sidebar.title("🔍 Filtros")
@@ -253,7 +271,6 @@ col4.markdown(f"""
     <p style='margin:0; font-size:11px; color:gray'>🎯 Objetivo: 50-55% (≈{ocu_min:.1f} min/hora)</p>
 </div>""", unsafe_allow_html=True)
 
-# Col5 → Promedio últimos 3 meses
 niv_p3m = semaforo_util(prom_3m_servicio)
 color_p3m = colores_semaforo[niv_p3m]
 col5.markdown(f"""
@@ -277,23 +294,24 @@ tab1, tab2, tab3, tab4, tab5 = st.tabs([
 with tab1:
     col_izq, col_der = st.columns(2)
     with col_izq:
+        # Ranking usa Util.Rec
         st.subheader("🏆 Ranking Utilización por Agente")
-        ranking = df.sort_values("Utilizacion", ascending=True).copy()
-        fig1 = px.bar(ranking, x="Utilizacion", y="NOMBRE",
-                     color="Semaforo", color_discrete_map=colores_semaforo,
-                     orientation="h", text="Utilizacion")
+        ranking = df.sort_values("Utilizacion_Rec", ascending=True).copy()
+        fig1 = px.bar(ranking, x="Utilizacion_Rec", y="NOMBRE",
+                     color="Semaforo_Rec", color_discrete_map=colores_semaforo,
+                     orientation="h", text="Utilizacion_Rec")
         fig1.add_vline(x=75, line_dash="dash", line_color="orange", annotation_text="Mín 75%")
         fig1.add_vline(x=85, line_dash="dash", line_color="green", annotation_text="Óptimo 85%")
         if techo_p90 > 0:
             fig1.add_vline(x=techo_p90, line_dash="dot", line_color="#9b59b6",
                           annotation_text=f"Techo {techo_p90:.1f}%")
         fig1.update_traces(texttemplate="%{text:.1f}%", textposition="outside", textfont=dict(size=11))
-        fig1.update_layout(height=600, plot_bgcolor="white")
+        fig1.update_layout(height=600, plot_bgcolor="white", xaxis_title="Util. Rec. (%Techo)")
         st.plotly_chart(fig1, use_container_width=True, key="fig1")
 
     with col_der:
         st.subheader("🚦 Distribución Semáforo")
-        dist = df["Semaforo"].value_counts().reset_index()
+        dist = df["Semaforo_Rec"].value_counts().reset_index()
         dist.columns = ["Nivel","Agentes"]
         fig2 = px.pie(dist, values="Agentes", names="Nivel",
                      color="Nivel", color_discrete_map=colores_semaforo, hole=0.4)
@@ -303,10 +321,18 @@ with tab1:
 
         st.subheader("👥 KPIs por Jefatura")
         fig3 = go.Figure()
-        for kpi, color in zip(["Utilizacion","Adhesion","Ocupacion"],["#3498db","#2ecc71","#e67e22"]):
-            fig3.add_trace(go.Bar(name=kpi, x=jefatura["JP"], y=jefatura[kpi],
-                                 text=jefatura[kpi], texttemplate="%{text:.1f}%",
-                                 textposition="outside", marker_color=color))
+        # Util.Rec para jefatura, Adhesion y Ocupacion sin cambio
+        kpis_jef = [
+            ("Utilizacion_Rec","#3498db","Util. Rec."),
+            ("Adhesion","#2ecc71","Adhesión"),
+            ("Ocupacion","#e67e22","Ocupación")
+        ]
+        for kpi, color, label in kpis_jef:
+            if kpi in jefatura.columns:
+                fig3.add_trace(go.Bar(
+                    name=label, x=jefatura["JP"], y=jefatura[kpi],
+                    text=jefatura[kpi], texttemplate="%{text:.1f}%",
+                    textposition="outside", marker_color=color))
         fig3.add_hline(y=75, line_dash="dash", line_color="orange", annotation_text="Mín 75%")
         fig3.add_hline(y=85, line_dash="dash", line_color="green", annotation_text="Óptimo 85%")
         fig3.update_layout(barmode="group", height=350, xaxis_tickangle=-45, plot_bgcolor="white")
@@ -345,7 +371,7 @@ with tab1:
     fig4.add_hrect(y0=85, y1=100, fillcolor="#2ecc71", opacity=0.05)
     fig4.add_hline(y=75,  line_dash="dash", line_color="orange", annotation_text="Mín 75%")
     fig4.add_hline(y=85,  line_dash="dash", line_color="green",  annotation_text="Óptimo 85%")
-    fig4.add_hline(y=86,  line_dash="dot",  line_color="#3498db",annotation_text="Obj. Cap. Op. 86%")
+    fig4.add_hline(y=86,  line_dash="dot",  line_color="#3498db", annotation_text="Obj. Cap. Op. 86%")
     if techo_p90 > 0:
         fig4.add_hline(y=techo_p90, line_dash="dot", line_color="#9b59b6",
                       annotation_text=f"Techo servicio {techo_p90:.1f}%")
@@ -364,20 +390,19 @@ with tab1:
     fig_cuartil.update_layout(height=400, plot_bgcolor="white")
     st.plotly_chart(fig_cuartil, use_container_width=True, key="fig_cuartil")
 
-    # Tabla — sin Techo_Perfil, Pct_Techo, Semaforo_Techo — con Utilizacion_Rec
+    # ── Tabla: solo Util.Rec (sin columna Utilizacion) ──
     st.subheader("📋 Resumen Completo por Agente")
     cols_t = ["NOMBRE","JP","HRS_CONTRATO","ESTADO","Tramo_Antiguedad",
-              "Utilizacion","Semaforo",
               "Utilizacion_Rec","Semaforo_Rec",
               "Adhesion","Semaforo_Adh","Ocupacion","Semaforo_Ocu","Cuartil_Util"]
-    tabla = df[[c for c in cols_t if c in df.columns]].sort_values("Utilizacion", ascending=False).copy()
-    for col in ["Utilizacion","Adhesion","Ocupacion"]:
+    tabla = df[[c for c in cols_t if c in df.columns]].sort_values("Utilizacion_Rec", ascending=False).copy()
+    tabla = tabla.rename(columns={"Utilizacion_Rec":"Util. Rec. (%techo)", "Semaforo_Rec":"Semáforo Rec"})
+    for col in ["Adhesion","Ocupacion"]:
         if col in tabla.columns:
             tabla[col] = tabla[col].apply(lambda x: f"{x:.1f}%" if pd.notna(x) else "")
-    if "Utilizacion_Rec" in tabla.columns:
-        tabla = tabla.rename(columns={"Utilizacion_Rec":"Util. Rec. (%techo)"})
+    if "Util. Rec. (%techo)" in tabla.columns:
         tabla["Util. Rec. (%techo)"] = tabla["Util. Rec. (%techo)"].apply(
-            lambda x: f"{x:.1f}%" if pd.notna(x) else "")
+            lambda x: f"{min(float(x), 100.0):.1f}%" if pd.notna(x) else "")
     st.dataframe(tabla, use_container_width=True, key="tabla1")
 
 # ══════════════════════════════════════════
@@ -390,102 +415,123 @@ with tab2:
     if periodo == "Mes":
         data_jp = jefatura.copy(); data_ag = resumen.copy()
         titulo_periodo = hoy.strftime('%B %Y')
+        kpi_util  = "Utilizacion_Rec"
+        kpi_label = "Util. Rec. (%Techo)"
+        sfn_tab2  = semaforo_rec
     elif periodo == "Semana":
         semanas_disp = sorted(jp_semana["Semana"].dropna().unique().tolist())
         semana_sel = st.selectbox("Selecciona semana", semanas_disp, key="semana_tab2")
         data_jp = jp_semana[jp_semana["Semana"]==semana_sel].copy()
         data_ag = semanal[semanal["Semana"]==semana_sel].copy()
         titulo_periodo = semana_sel
+        kpi_util  = "Utilizacion"
+        kpi_label = "Utilización"
+        sfn_tab2  = semaforo_util
     else:
         fechas_disp = sorted(jp_dia["Fecha"].dropna().unique().tolist())
         fecha_sel = st.selectbox("Selecciona fecha", fechas_disp, key="fecha_tab2")
         data_jp = jp_dia[jp_dia["Fecha"]==fecha_sel].copy()
         data_ag = diario[diario["Fecha"]==fecha_sel].dropna(subset=["Utilizacion"]).copy()
         titulo_periodo = str(fecha_sel)
+        kpi_util  = "Utilizacion"
+        kpi_label = "Utilización"
+        sfn_tab2  = semaforo_util
 
-    data_jp["Semaforo"] = data_jp["Utilizacion"].apply(semaforo_util)
-    data_ag["Semaforo"] = data_ag["Utilizacion"].apply(semaforo_util)
+    # Semáforo según KPI elegido
+    sem_col = "Sem_t2"
+    if kpi_util in data_jp.columns:
+        data_jp[sem_col] = data_jp[kpi_util].apply(sfn_tab2)
+    if kpi_util in data_ag.columns:
+        data_ag[sem_col] = data_ag[kpi_util].apply(sfn_tab2)
 
     st.markdown(f"### 👔 Ranking Supervisores — {titulo_periodo}")
     col_r1, col_r2 = st.columns([2,1])
     with col_r1:
-        fig_jp = px.bar(data_jp.sort_values("Utilizacion", ascending=True),
-                       x="Utilizacion", y="JP", color="Semaforo",
-                       color_discrete_map=colores_semaforo, orientation="h", text="Utilizacion")
-        fig_jp.add_vline(x=75, line_dash="dash", line_color="orange", annotation_text="Mín 75%")
-        fig_jp.add_vline(x=85, line_dash="dash", line_color="green", annotation_text="Óptimo 85%")
-        fig_jp.update_traces(texttemplate="%{text:.1f}%", textposition="outside")
-        fig_jp.update_layout(height=450, plot_bgcolor="white")
-        st.plotly_chart(fig_jp, use_container_width=True, key="fig_jp")
+        if kpi_util in data_jp.columns:
+            fig_jp = px.bar(data_jp.sort_values(kpi_util, ascending=True),
+                           x=kpi_util, y="JP", color=sem_col,
+                           color_discrete_map=colores_semaforo, orientation="h", text=kpi_util)
+            fig_jp.add_vline(x=75, line_dash="dash", line_color="orange", annotation_text="Mín 75%")
+            fig_jp.add_vline(x=85, line_dash="dash", line_color="green", annotation_text="Óptimo 85%")
+            fig_jp.update_traces(texttemplate="%{text:.1f}%", textposition="outside")
+            fig_jp.update_layout(height=450, plot_bgcolor="white", xaxis_title=kpi_label)
+            st.plotly_chart(fig_jp, use_container_width=True, key="fig_jp")
 
     with col_r2:
-        st.markdown("#### 🥇 Top 3 Mejor")
-        for i,(_, row) in enumerate(data_jp.sort_values("Utilizacion", ascending=False).head(3).iterrows()):
-            c = colores_semaforo[semaforo_util(row["Utilizacion"])]
-            st.markdown(f"""<div style='background:{c}20; border-left:4px solid {c};
-                padding:8px; border-radius:5px; margin-bottom:8px'>
-                <b>{"🥇🥈🥉"[i]} {" ".join(row["JP"].split()[:2])}</b><br>
-                Utilización: <b>{row['Utilizacion']:.1f}%</b></div>""", unsafe_allow_html=True)
-        st.markdown("#### ⚠️ Top 3 Menor")
-        for _, row in data_jp.sort_values("Utilizacion").head(3).iterrows():
-            c = colores_semaforo[semaforo_util(row["Utilizacion"])]
-            st.markdown(f"""<div style='background:{c}20; border-left:4px solid {c};
-                padding:8px; border-radius:5px; margin-bottom:8px'>
-                <b>⚠️ {" ".join(row["JP"].split()[:2])}</b><br>
-                Utilización: <b>{row['Utilizacion']:.1f}%</b></div>""", unsafe_allow_html=True)
+        if kpi_util in data_jp.columns:
+            st.markdown("#### 🥇 Top 3 Mejor")
+            for i,(_, row) in enumerate(data_jp.sort_values(kpi_util, ascending=False).head(3).iterrows()):
+                val = row.get(kpi_util, 0) or 0
+                c = colores_semaforo[sfn_tab2(val)]
+                st.markdown(f"""<div style='background:{c}20; border-left:4px solid {c};
+                    padding:8px; border-radius:5px; margin-bottom:8px'>
+                    <b>{"🥇🥈🥉"[i]} {" ".join(str(row["JP"]).split()[:2])}</b><br>
+                    {kpi_label}: <b>{val:.1f}%</b></div>""", unsafe_allow_html=True)
+            st.markdown("#### ⚠️ Top 3 Menor")
+            for _, row in data_jp.sort_values(kpi_util).head(3).iterrows():
+                val = row.get(kpi_util, 0) or 0
+                c = colores_semaforo[sfn_tab2(val)]
+                st.markdown(f"""<div style='background:{c}20; border-left:4px solid {c};
+                    padding:8px; border-radius:5px; margin-bottom:8px'>
+                    <b>⚠️ {" ".join(str(row["JP"]).split()[:2])}</b><br>
+                    {kpi_label}: <b>{val:.1f}%</b></div>""", unsafe_allow_html=True)
 
     st.markdown("---")
     st.markdown(f"### 👤 Top 10 Agentes — {titulo_periodo}")
-    col_t1, col_t2 = st.columns(2)
-    with col_t1:
-        st.markdown("#### 🥇 Top 10 Mejor Performance")
-        top10m = data_ag.sort_values("Utilizacion", ascending=False).head(10).copy()
-        top10m["Semaforo"] = top10m["Utilizacion"].apply(semaforo_util)
-        fig10m = px.bar(top10m, x="Utilizacion", y="NOMBRE", color="Semaforo",
-                       color_discrete_map=colores_semaforo, orientation="h", text="Utilizacion")
-        fig10m.add_vline(x=75, line_dash="dash", line_color="orange")
-        fig10m.add_vline(x=85, line_dash="dash", line_color="green")
-        fig10m.update_traces(texttemplate="%{text:.1f}%", textposition="outside")
-        fig10m.update_layout(height=400, plot_bgcolor="white", showlegend=False)
-        st.plotly_chart(fig10m, use_container_width=True, key="fig_top10m")
+    if kpi_util in data_ag.columns:
+        col_t1, col_t2 = st.columns(2)
+        with col_t1:
+            st.markdown("#### 🥇 Top 10 Mejor Performance")
+            top10m = data_ag.sort_values(kpi_util, ascending=False).head(10).copy()
+            top10m[sem_col] = top10m[kpi_util].apply(sfn_tab2)
+            fig10m = px.bar(top10m, x=kpi_util, y="NOMBRE", color=sem_col,
+                           color_discrete_map=colores_semaforo, orientation="h", text=kpi_util)
+            fig10m.add_vline(x=75, line_dash="dash", line_color="orange")
+            fig10m.add_vline(x=85, line_dash="dash", line_color="green")
+            fig10m.update_traces(texttemplate="%{text:.1f}%", textposition="outside")
+            fig10m.update_layout(height=400, plot_bgcolor="white", showlegend=False, xaxis_title=kpi_label)
+            st.plotly_chart(fig10m, use_container_width=True, key="fig_top10m")
 
-    with col_t2:
-        st.markdown("#### ⚠️ Top 10 Menor Performance")
-        top10mn = data_ag.sort_values("Utilizacion").head(10).copy()
-        top10mn["Semaforo"] = top10mn["Utilizacion"].apply(semaforo_util)
-        fig10mn = px.bar(top10mn, x="Utilizacion", y="NOMBRE", color="Semaforo",
-                        color_discrete_map=colores_semaforo, orientation="h", text="Utilizacion")
-        fig10mn.add_vline(x=75, line_dash="dash", line_color="orange")
-        fig10mn.update_traces(texttemplate="%{text:.1f}%", textposition="outside")
-        fig10mn.update_layout(height=400, plot_bgcolor="white", showlegend=False)
-        st.plotly_chart(fig10mn, use_container_width=True, key="fig_top10mn")
+        with col_t2:
+            st.markdown("#### ⚠️ Top 10 Menor Performance")
+            top10mn = data_ag.sort_values(kpi_util).head(10).copy()
+            top10mn[sem_col] = top10mn[kpi_util].apply(sfn_tab2)
+            fig10mn = px.bar(top10mn, x=kpi_util, y="NOMBRE", color=sem_col,
+                            color_discrete_map=colores_semaforo, orientation="h", text=kpi_util)
+            fig10mn.add_vline(x=75, line_dash="dash", line_color="orange")
+            fig10mn.update_traces(texttemplate="%{text:.1f}%", textposition="outside")
+            fig10mn.update_layout(height=400, plot_bgcolor="white", showlegend=False, xaxis_title=kpi_label)
+            st.plotly_chart(fig10mn, use_container_width=True, key="fig_top10mn")
 
     st.markdown("---")
     st.markdown(f"### 📋 Ranking Completo — {titulo_periodo}")
-    jp_opc = ["Todos"] + sorted(data_ag["JP"].dropna().unique().tolist())
-    jp_fil = st.selectbox("Filtrar supervisor", jp_opc, key="jp_rank")
-    dag = data_ag[data_ag["JP"]==jp_fil].copy() if jp_fil != "Todos" else data_ag.copy()
-    dag = dag.sort_values("Utilizacion", ascending=True)
-    fig_ag = px.bar(dag, x="Utilizacion", y="NOMBRE", color="Semaforo",
-                   color_discrete_map=colores_semaforo, orientation="h", text="Utilizacion")
-    fig_ag.add_vline(x=75, line_dash="dash", line_color="orange", annotation_text="Mín 75%")
-    fig_ag.add_vline(x=85, line_dash="dash", line_color="green", annotation_text="Óptimo 85%")
-    fig_ag.update_traces(texttemplate="%{text:.1f}%", textposition="outside")
-    fig_ag.update_layout(height=600, plot_bgcolor="white")
-    st.plotly_chart(fig_ag, use_container_width=True, key="fig_ag")
+    if kpi_util in data_ag.columns:
+        jp_opc = ["Todos"] + sorted(data_ag["JP"].dropna().unique().tolist())
+        jp_fil = st.selectbox("Filtrar supervisor", jp_opc, key="jp_rank")
+        dag = data_ag[data_ag["JP"]==jp_fil].copy() if jp_fil != "Todos" else data_ag.copy()
+        dag[sem_col] = dag[kpi_util].apply(sfn_tab2)
+        dag = dag.sort_values(kpi_util, ascending=True)
+        fig_ag = px.bar(dag, x=kpi_util, y="NOMBRE", color=sem_col,
+                       color_discrete_map=colores_semaforo, orientation="h", text=kpi_util)
+        fig_ag.add_vline(x=75, line_dash="dash", line_color="orange", annotation_text="Mín 75%")
+        fig_ag.add_vline(x=85, line_dash="dash", line_color="green", annotation_text="Óptimo 85%")
+        fig_ag.update_traces(texttemplate="%{text:.1f}%", textposition="outside")
+        fig_ag.update_layout(height=600, plot_bgcolor="white", xaxis_title=kpi_label)
+        st.plotly_chart(fig_ag, use_container_width=True, key="fig_ag")
 
-    col_m1,col_m2,col_m3,col_m4 = st.columns(4)
-    col_m1.metric("👥 Agentes", len(dag))
-    for cm, lb, kpi, sfn in [
-        (col_m2,"📈 Utilización","Utilizacion",semaforo_util),
-        (col_m3,"✅ Adhesión","Adhesion",semaforo_adh),
-        (col_m4,"⚡ Ocupación","Ocupacion",semaforo_ocu)
-    ]:
-        v = dag[kpi].mean(); nv = sfn(v); cv = colores_semaforo[nv]
-        cm.markdown(f"""<div style='background:{cv}20; border-left:5px solid {cv}; padding:10px; border-radius:5px'>
-            <p style='margin:0; font-size:13px; color:gray'>{lb}</p>
-            <p style='margin:0; font-size:24px; font-weight:bold'>{v:.1f}%</p>
-            <p style='margin:0; font-size:12px'>{nv}</p></div>""", unsafe_allow_html=True)
+        col_m1,col_m2,col_m3,col_m4 = st.columns(4)
+        col_m1.metric("👥 Agentes", len(dag))
+        for cm, lb, kpi, sfn in [
+            (col_m2, f"📈 {kpi_label}", kpi_util, sfn_tab2),
+            (col_m3,"✅ Adhesión","Adhesion",semaforo_adh),
+            (col_m4,"⚡ Ocupación","Ocupacion",semaforo_ocu)
+        ]:
+            if kpi in dag.columns:
+                v = dag[kpi].mean(); nv = sfn(v); cv = colores_semaforo[nv]
+                cm.markdown(f"""<div style='background:{cv}20; border-left:5px solid {cv}; padding:10px; border-radius:5px'>
+                    <p style='margin:0; font-size:13px; color:gray'>{lb}</p>
+                    <p style='margin:0; font-size:24px; font-weight:bold'>{v:.1f}%</p>
+                    <p style='margin:0; font-size:12px'>{nv}</p></div>""", unsafe_allow_html=True)
 
 # ══════════════════════════════════════════
 # TAB 3
@@ -513,10 +559,14 @@ with tab3:
     meses_crit = ag.get("Meses_Critico","—")
     techo_ag   = ag.get("Techo_Perfil", None)
 
-    # Utilización mes en curso
+    # Utilización mes en curso → Util.Rec (cap 100%)
     ag_resumen = resumen[resumen["NOMBRE"]==agente_sel]
-    util_mes_actual = ag_resumen["Utilizacion"].values[0] if not ag_resumen.empty else None
-    util_mes_txt = f"{util_mes_actual:.1f}%" if util_mes_actual and pd.notna(util_mes_actual) else "—"
+    if not ag_resumen.empty and "Utilizacion_Rec" in ag_resumen.columns:
+        util_mes_raw = ag_resumen["Utilizacion_Rec"].values[0]
+        util_mes_actual = min(float(util_mes_raw), 100.0) if pd.notna(util_mes_raw) else None
+    else:
+        util_mes_actual = None
+    util_mes_txt = f"{util_mes_actual:.1f}%" if util_mes_actual is not None else "—"
 
     ag_hrs = hrs_mes[hrs_mes["NOMBRE"]==agente_sel]
     h_con = h_pro = h_imp = h_tur = h_dis = h_des = h_exc = "—"
@@ -534,7 +584,7 @@ with tab3:
                 padding:15px; border-radius:8px; margin-bottom:15px'>
         <h4 style='margin:0'>{agente_sel} &nbsp;
             <span style='font-size:14px; font-weight:normal; color:gray'>
-            | Utilización mes en curso: <b style='color:white'>{util_mes_txt}</b>
+            | Util. Rec. mes en curso: <b style='color:white'>{util_mes_txt}</b>
             </span>
         </h4>
         <p style='margin:5px 0'>
@@ -660,20 +710,33 @@ with tab4:
     st.plotly_chart(fig_crit, use_container_width=True, key="fig_crit")
 
     st.markdown("#### 📋 Detalle Críticos — Mes Actual")
+    # Merge veces_critico y Utilizacion_Rec
     if "NOMBRE" in hist_ag.columns and "Veces_Critico" in hist_ag.columns:
         crit_fil = crit_fil.merge(hist_ag[["NOMBRE","Veces_Critico","Meses_Critico"]],
                                   on="NOMBRE", how="left")
-    # Ocultar Techo_Perfil y Pct_Techo
-    cols_crit_show = ["NOMBRE","JP","Utilizacion","Adhesion","Ocupacion","Veces_Critico","Meses_Critico"]
+    # Merge Utilizacion_Rec desde resumen
+    if "Utilizacion_Rec" in resumen.columns:
+        crit_fil = crit_fil.merge(resumen[["NOMBRE","Utilizacion_Rec"]],
+                                  on="NOMBRE", how="left")
+        crit_fil["Utilizacion_Rec"] = crit_fil["Utilizacion_Rec"].clip(upper=100)
+
+    # Mostrar Util.Rec en lugar de Utilizacion
+    cols_crit_show = ["NOMBRE","JP","Utilizacion_Rec","Adhesion","Ocupacion","Veces_Critico","Meses_Critico"]
     cm2 = crit_fil[[c for c in cols_crit_show if c in crit_fil.columns]].copy()
-    for col in ["Utilizacion","Adhesion","Ocupacion"]:
+    cm2 = cm2.rename(columns={"Utilizacion_Rec":"Util. Rec. (%techo)"})
+    for col in ["Adhesion","Ocupacion"]:
         if col in cm2.columns: cm2[col] = cm2[col].apply(lambda x: f"{x:.1f}%" if pd.notna(x) else "")
+    if "Util. Rec. (%techo)" in cm2.columns:
+        cm2["Util. Rec. (%techo)"] = cm2["Util. Rec. (%techo)"].apply(
+            lambda x: f"{min(float(x),100.0):.1f}%" if pd.notna(x) else "")
     st.dataframe(cm2, use_container_width=True, key="tabla_criticos")
 
     st.markdown("#### 📅 Histórico Completo — Apariciones en Crítico")
+    # Usar Utilizacion del histórico mensual (dato real de ese mes)
     cols_ch = ["NOMBRE","JP","Mes","Utilizacion","Adhesion","Ocupacion"]
     tch = crit_hist[[c for c in cols_ch if c in crit_hist.columns]].sort_values(["NOMBRE"]).copy()
-    for col in ["Utilizacion","Adhesion","Ocupacion"]:
+    tch = tch.rename(columns={"Utilizacion":"Util. ese mes"})
+    for col in ["Util. ese mes","Adhesion","Ocupacion"]:
         if col in tch.columns: tch[col] = tch[col].apply(lambda x: f"{x:.1f}%" if pd.notna(x) else "")
     st.dataframe(tch, use_container_width=True, key="tabla_crit_hist")
 
@@ -735,36 +798,40 @@ with tab5:
 
     prod_labels = ['📞 En Cola','💤 Ocioso','🗣️ Interactuando']
 
-    if ag_sel != "Todos" and len(dh) > 0:
-        rh = dh.iloc[0]
-
+    # ── Helper para generar gráficos de horas (agente o agregado) ──
+    def render_graficos_horas(row_data_min, titulo_graf, key_prefix):
+        """
+        row_data_min: dict {col → minutos}
+        Renderiza bar chart + pie distribución + pie improductivas
+        """
+        # Métricas resumen — ORDEN: Programado primero, luego Conectado
         c1,c2,c3,c4,c5,c6 = st.columns(6)
-        for ch, lb, kh, co in [
-            (c1,"🔌 Conectado",      "Conectado_hrs",       "#3498db"),
-            (c2,"📅 Programado",     "Turno_hrs",           "#9b59b6"),
+        metricas_orden = [
+            (c1,"📅 Programado",     "Turno_hrs",           "#9b59b6"),
+            (c2,"🔌 Conectado",      "Conectado_hrs",       "#3498db"),
             (c3,"✅ Productivas",    "Hrs_Productivas",     "#2ecc71"),
             (c4,"❌ Improductivas",  "Hrs_Improductivas",   "#e74c3c"),
             (c5,"🟡 Disponible",     "Disponible_hrs",      "#f39c12"),
             (c6,"⚫ Desconexión",    "Desconexion_hrs",     "#7f8c8d")
-        ]:
+        ]
+        for ch, lb, kh, co in metricas_orden:
+            val_min = row_data_min.get(kh, 0)
             ch.markdown(f"""<div style='background:{co}20; border-left:4px solid {co};
                 padding:8px; border-radius:5px'>
                 <p style='margin:0; font-size:11px; color:gray'>{lb}</p>
-                <p style='margin:0; font-size:15px; font-weight:bold'>{rh.get(kh,'—')}</p>
+                <p style='margin:0; font-size:15px; font-weight:bold'>{min_a_hhmmss(val_min)}</p>
             </div>""", unsafe_allow_html=True)
 
         st.markdown("---")
 
-        # Gráfico barras — eje X en horas
+        # Bar chart — eje X en horas
         estados_min = {}
         for k, v in estados_graf.items():
-            mv = hhmmss_a_min(rh.get(k,'00:00:00'))
+            mv = row_data_min.get(k, 0)
             if mv > 0: estados_min[v] = mv
 
         total_min = sum(estados_min.values())
         est_sort = dict(sorted(estados_min.items(), key=lambda x: x[1], reverse=True))
-
-        # Convertir a horas para el eje X
         est_sort_hrs = {k: v/60 for k,v in est_sort.items()}
 
         colores_b = []
@@ -785,19 +852,19 @@ with tab5:
             text=textos_b, textposition='outside', textfont=dict(size=11)
         ))
         fig_hrs.update_layout(
-            title=f"Horas por Estado — {ag_sel} — {th}",
+            title=f"Horas por Estado — {titulo_graf}",
             height=560, plot_bgcolor="white",
             xaxis_title="Horas",
             margin=dict(t=60)
         )
-        st.plotly_chart(fig_hrs, use_container_width=True, key="fig_hrs")
+        st.plotly_chart(fig_hrs, use_container_width=True, key=f"fig_hrs_{key_prefix}")
 
         col_p1, col_p2 = st.columns(2)
         with col_p1:
-            pm  = hhmmss_a_min(rh.get('Hrs_Productivas','00:00:00'))
-            im  = hhmmss_a_min(rh.get('Hrs_Improductivas','00:00:00'))
-            dm  = hhmmss_a_min(rh.get('Desconexion_hrs','00:00:00'))
-            dm2 = hhmmss_a_min(rh.get('Disponible_hrs','00:00:00'))
+            pm  = row_data_min.get('Hrs_Productivas', 0)
+            im  = row_data_min.get('Hrs_Improductivas', 0)
+            dm  = row_data_min.get('Desconexion_hrs', 0)
+            dm2 = row_data_min.get('Disponible_hrs', 0)
             fig_pie = go.Figure(go.Pie(
                 labels=[f'✅ Productivas\n{min_a_hhmmss(pm)}',
                         f'❌ Improductivas\n{min_a_hhmmss(im)}',
@@ -812,7 +879,7 @@ with tab5:
                 height=450,
                 margin=dict(t=60)
             )
-            st.plotly_chart(fig_pie, use_container_width=True, key="fig_pie")
+            st.plotly_chart(fig_pie, use_container_width=True, key=f"fig_pie_{key_prefix}")
 
         with col_p2:
             imp_est = {k:v for k,v in estados_min.items()
@@ -820,23 +887,44 @@ with tab5:
                       and k not in ['⚫ Desconexión Total','🟡 Disponible']
                       and v > 0}
             if imp_est:
-                # Labels con horas
+                # Labels con iconos + horas (textinfo='label+percent' para mostrar iconos en el gráfico)
                 labels_imp = [f"{k}\n{min_a_hhmmss(v)}" for k,v in imp_est.items()]
                 fig_p2 = go.Figure(go.Pie(
                     labels=labels_imp,
                     values=list(imp_est.values()), hole=0.4
                 ))
                 fig_p2.update_traces(
-                    textinfo='percent',
+                    textinfo='label+percent',   # ← iconos visibles sobre el gráfico
                     textfont=dict(size=11),
                     hovertemplate='%{label}<br>%{percent}'
                 )
                 fig_p2.update_layout(
                     title="🔍 Desglose Improductivas",
                     height=450,
-                    margin=dict(t=60)
+                    margin=dict(t=60),
+                    showlegend=True
                 )
-                st.plotly_chart(fig_p2, use_container_width=True, key="fig_pie2")
+                st.plotly_chart(fig_p2, use_container_width=True, key=f"fig_pie2_{key_prefix}")
+
+    # ── Vista por agente específico ──
+    if ag_sel != "Todos" and len(dh) > 0:
+        rh = dh.iloc[0]
+        # Convertir fila única a dict de minutos
+        all_cols = list(estados_graf.keys()) + ["Conectado_hrs","Turno_hrs",
+                    "Hrs_Productivas","Hrs_Improductivas","Disponible_hrs","Desconexion_hrs"]
+        row_min = {col: hhmmss_a_min(rh.get(col,'00:00:00')) for col in all_cols}
+        render_graficos_horas(row_min, f"{ag_sel} — {th}", "ag")
+
+    # ── Vista agregada (supervisor o servicio completo) cuando ag_sel == "Todos" ──
+    elif ag_sel == "Todos" and len(dh) > 0:
+        titulo_agg = f"{jp_sel} — {th}" if jp_sel != "Todos" else f"Servicio completo — {th}"
+        alcance_txt = f"Supervisor: **{jp_sel}**" if jp_sel != "Todos" else "**Todo el servicio**"
+        st.info(f"📊 Vista agregada — {alcance_txt} | {len(dh)} agentes")
+
+        all_cols_agg = list(estados_graf.keys()) + ["Conectado_hrs","Turno_hrs",
+                        "Hrs_Productivas","Hrs_Improductivas","Disponible_hrs","Desconexion_hrs"]
+        row_min_agg = agregar_horas_grupo(dh, all_cols_agg)
+        render_graficos_horas(row_min_agg, titulo_agg, "agg")
 
     st.markdown("---")
     st.markdown("#### 📋 Tabla Detalle por Estado")
