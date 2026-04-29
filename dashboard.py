@@ -232,7 +232,25 @@ st.sidebar.markdown(f"""
     <p style='margin:0; font-size:11px; color:gray'>P90 últimos 3 meses ÷ Obj. 86%<br>{meses_techo}</p>
 </div>""", unsafe_allow_html=True)
 
-if st.sidebar.button("🔄 Refrescar datos"):
+st.sidebar.markdown("---")
+st.sidebar.markdown("""
+<div style='background:#1e1e2e; border:1px solid #444; padding:10px; border-radius:8px'>
+    <p style='margin:0 0 6px 0; font-size:12px; font-weight:bold; color:#aaa'>📋 Umbrales Semáforo Util.</p>
+    <p style='margin:2px 0; font-size:12px'>🟢 <b>Óptimo</b> → ≥ 85%</p>
+    <p style='margin:2px 0; font-size:12px'>🟡 <b>Medio</b> → 75% – 84%</p>
+    <p style='margin:2px 0; font-size:12px'>🔴 <b>Crítico</b> → &lt; 75%</p>
+</div>""", unsafe_allow_html=True)
+
+st.sidebar.markdown("""
+<div style='background:#1e1e2e; border:1px solid #444; padding:10px; border-radius:8px; margin-top:8px'>
+    <p style='margin:0 0 6px 0; font-size:12px; font-weight:bold; color:#aaa'>📊 Umbrales Cuartilización</p>
+    <p style='margin:2px 0; font-size:12px'>🟢 <b>Q4 — Óptimo</b> → ≥ 85%</p>
+    <p style='margin:2px 0; font-size:12px'>✅ <b>Q3 — Sobre meta</b> → 75%–84%</p>
+    <p style='margin:2px 0; font-size:12px'>⚠️ <b>Q2 — Bajo meta</b> → 70%–74%</p>
+    <p style='margin:2px 0; font-size:12px'>🔴 <b>Q1 — Crítico</b> → &lt; 70%</p>
+</div>""", unsafe_allow_html=True)
+
+st.sidebar.markdown("---")
     st.session_state.cache_key = int(time.time())
     st.cache_data.clear(); st.rerun()
 
