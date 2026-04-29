@@ -197,6 +197,16 @@ resumen["Semaforo_Adh"] = resumen["Adhesion"].apply(semaforo_adh)
 resumen["Semaforo_Ocu"] = resumen["Ocupacion"].apply(semaforo_ocu)
 resumen["Semaforo_Rec"] = resumen["Utilizacion_Rec"].apply(semaforo_util)  # ≥85 verde, ≥75 amarillo, <75 rojo
 
+# Cuartil recalculado sobre Util.Rec (coherente con la columna visible)
+def cuartil_rec(v):
+    if pd.isna(v): return 'Sin datos'
+    if v >= 85:   return 'Q4 — Óptimo 🟢'
+    elif v >= 75: return 'Q3 — Sobre meta ✅'
+    elif v >= 70: return 'Q2 — Bajo meta ⚠️'
+    else:         return 'Q1 — Crítico 🔴'
+
+resumen["Cuartil_Rec"] = resumen["Utilizacion_Rec"].apply(cuartil_rec)
+
 # ── Calcular Utilizacion_Rec por jefatura (promedio agentes) ──
 if 'Utilizacion_Rec' in resumen.columns and 'JP' in resumen.columns:
     jp_util_rec = resumen.groupby('JP')['Utilizacion_Rec'].mean().reset_index()
@@ -394,9 +404,10 @@ with tab1:
     st.subheader("📋 Resumen Completo por Agente")
     cols_t = ["NOMBRE","JP","HRS_CONTRATO","ESTADO","Tramo_Antiguedad",
               "Utilizacion_Rec","Semaforo_Rec",
-              "Adhesion","Semaforo_Adh","Ocupacion","Semaforo_Ocu","Cuartil_Util"]
+              "Adhesion","Semaforo_Adh","Ocupacion","Semaforo_Ocu","Cuartil_Rec"]
     tabla = df[[c for c in cols_t if c in df.columns]].sort_values("Utilizacion_Rec", ascending=False).copy()
-    tabla = tabla.rename(columns={"Utilizacion_Rec":"Util. Rec. (%techo)", "Semaforo_Rec":"Semáforo Rec"})
+    tabla = tabla.rename(columns={"Utilizacion_Rec":"Util. Rec. (%techo)", "Semaforo_Rec":"Semáforo Rec",
+                                  "Cuartil_Rec":"Cuartil"})
     for col in ["Adhesion","Ocupacion"]:
         if col in tabla.columns:
             tabla[col] = tabla[col].apply(lambda x: f"{x:.1f}%" if pd.notna(x) else "")
