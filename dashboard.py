@@ -195,7 +195,7 @@ else:
 resumen["Semaforo"]     = resumen["Utilizacion"].apply(semaforo_util)
 resumen["Semaforo_Adh"] = resumen["Adhesion"].apply(semaforo_adh)
 resumen["Semaforo_Ocu"] = resumen["Ocupacion"].apply(semaforo_ocu)
-resumen["Semaforo_Rec"] = resumen["Utilizacion_Rec"].apply(semaforo_rec)
+resumen["Semaforo_Rec"] = resumen["Utilizacion_Rec"].apply(semaforo_util)  # ≥85 verde, ≥75 amarillo, <75 rojo
 
 # ── Calcular Utilizacion_Rec por jefatura (promedio agentes) ──
 if 'Utilizacion_Rec' in resumen.columns and 'JP' in resumen.columns:
@@ -203,7 +203,7 @@ if 'Utilizacion_Rec' in resumen.columns and 'JP' in resumen.columns:
     jp_util_rec.columns = ['JP', 'Utilizacion_Rec']
     jefatura = jefatura.merge(jp_util_rec, on='JP', how='left')
     jefatura['Utilizacion_Rec'] = jefatura['Utilizacion_Rec'].clip(upper=100)
-jefatura['Semaforo_Rec'] = jefatura['Utilizacion_Rec'].apply(semaforo_rec)
+jefatura['Semaforo_Rec'] = jefatura['Utilizacion_Rec'].apply(semaforo_util)  # consistente con agentes
 
 # ── Sidebar ──
 st.sidebar.title("🔍 Filtros")
