@@ -417,7 +417,7 @@ with tab2:
         titulo_periodo = hoy.strftime('%B %Y')
         kpi_util  = "Utilizacion_Rec"
         kpi_label = "Util. Rec. (%Techo)"
-        sfn_tab2  = semaforo_rec
+        sfn_tab2  = semaforo_util   # ≥85 verde, ≥75 amarillo, <75 rojo — mismos umbrales
     elif periodo == "Semana":
         semanas_disp = sorted(jp_semana["Semana"].dropna().unique().tolist())
         semana_sel = st.selectbox("Selecciona semana", semanas_disp, key="semana_tab2")
@@ -568,6 +568,10 @@ with tab3:
         util_mes_actual = None
     util_mes_txt = f"{util_mes_actual:.1f}%" if util_mes_actual is not None else "—"
 
+    # Semáforo y color de la tarjeta basado en Util.Rec actual (umbrales: ≥85 verde, ≥75 amarillo, <75 rojo)
+    sem_actual   = semaforo_util(util_mes_actual) if util_mes_actual is not None else "Sin datos"
+    color_actual = colores_semaforo.get(sem_actual, "#95a5a6")
+
     ag_hrs = hrs_mes[hrs_mes["NOMBRE"]==agente_sel]
     h_con = h_pro = h_imp = h_tur = h_dis = h_des = h_exc = "—"
     if not ag_hrs.empty:
@@ -580,20 +584,21 @@ with tab3:
     techo_txt = f"{techo_ag:.1f}%" if techo_ag and pd.notna(techo_ag) else "—"
 
     st.markdown(f"""
-    <div style='background:{color_ag}20; border-left:5px solid {color_ag};
+    <div style='background:{color_actual}20; border-left:5px solid {color_actual};
                 padding:15px; border-radius:8px; margin-bottom:15px'>
         <h4 style='margin:0'>{agente_sel} &nbsp;
             <span style='font-size:14px; font-weight:normal; color:gray'>
             | Util. Rec. mes en curso: <b style='color:white'>{util_mes_txt}</b>
+            &nbsp; {sem_actual}
             </span>
         </h4>
         <p style='margin:5px 0'>
             📋 Estado: <b>{estado}</b> &nbsp;|&nbsp;
             ⏰ Contrato: <b>{contrato} hrs</b> &nbsp;|&nbsp;
             📅 Antigüedad: <b>{ant_texto}</b> &nbsp;|&nbsp;
-            📊 Promedio histórico: <b>{promedio:.1f}%</b> &nbsp;|&nbsp;
+            📊 Promedio histórico: <b>{promedio:.1f}%</b> ({sem_ag}) &nbsp;|&nbsp;
             🎯 Techo perfil: <b>{techo_txt}</b> &nbsp;|&nbsp;
-            {tendencia} &nbsp;|&nbsp; {sem_ag}
+            {tendencia}
         </p>
         <p style='margin:5px 0; font-size:13px'>
             🔌 Conectado: <b>{h_con}</b> &nbsp;|&nbsp;
