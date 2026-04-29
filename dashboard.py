@@ -895,17 +895,6 @@ with tab5:
         )
         st.plotly_chart(fig_hrs, use_container_width=True, key=f"fig_hrs_{key_prefix}")
 
-        # Nota contextual "No Responde"
-        st.markdown("""
-<div style='background:#2c3e5020; border-left:4px solid #3498db;
-            padding:10px; border-radius:5px; margin-bottom:12px; font-size:13px'>
-    📵 <b>Nota — Estado "No Responde":</b> Este estado es activado <b>automáticamente por el sistema IVR</b>
-    cuando una llamada queda en espera y el agente no retorna a la cola.
-    <b>No es seleccionado manualmente</b> por el agente. Un volumen elevado puede indicar
-    una falla puntual de Genesys Cloud o falta de alerta del agente. &nbsp;
-    ⚠️ <b>Este tiempo NO afecta el cálculo de Utilización.</b>
-</div>""", unsafe_allow_html=True)
-
         col_p1, col_p2 = st.columns(2)
         with col_p1:
             pm  = row_data_min.get('Hrs_Productivas', 0)
@@ -952,6 +941,17 @@ with tab5:
                     showlegend=True
                 )
                 st.plotly_chart(fig_p2, use_container_width=True, key=f"fig_pie2_{key_prefix}")
+
+        # Nota contextual "No Responde" — al final de los gráficos
+        st.markdown("""
+<div style='background:#2c3e5020; border-left:4px solid #3498db;
+            padding:10px; border-radius:5px; margin-top:12px; font-size:13px'>
+    📵 <b>Nota — Estado "No Responde":</b> Este estado es activado <b>automáticamente por el sistema IVR</b>
+    cuando una llamada queda en espera y el agente no retorna a la cola.
+    <b>No es seleccionado manualmente</b> por el agente. Un volumen elevado puede indicar
+    una falla puntual de Genesys Cloud o falta de alerta del agente. &nbsp;
+    ⚠️ <b>Este tiempo NO afecta el cálculo de Utilización.</b>
+</div>""", unsafe_allow_html=True)
 
     # ── Vista por agente específico ──
     if ag_sel != "Todos" and len(dh) > 0:
@@ -1071,7 +1071,6 @@ with tab6:
         📲 Llamada Manual
     </p>
     <p style='margin:8px 0 0 0; font-size:11px; color:#aaa'>
-        ⚠️ El descanso y comida dentro del tiempo planificado por perfil <b>no</b> se considera improductivo.
     </p>
 </div>""", unsafe_allow_html=True)
 
