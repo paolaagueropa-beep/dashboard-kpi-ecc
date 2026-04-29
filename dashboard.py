@@ -51,6 +51,12 @@ def semaforo_ocu(val):
     elif (40 <= val < 50) or (55 < val <= 65): return "🟡 Medio"
     else: return "🔴 Crítico"
 
+def semaforo_rec(val):
+    if pd.isna(val): return "Sin datos"
+    if val >= 95: return "🟢 Óptimo"
+    elif val >= 85: return "🟡 Medio"
+    else: return "🔴 Crítico"
+
 colores_semaforo = {
     "🟢 Óptimo": "#2ecc71",
     "🟡 Medio": "#f1c40f",
@@ -69,6 +75,12 @@ def min_a_hhmmss(m):
         h = int(m//60); mi = int(m%60); s = int((m%1)*60)
         return f"{h:02d}:{mi:02d}:{s:02d}"
     except: return "00:00:00"
+
+def min_a_horas(m):
+    try:
+        h = m / 60
+        return round(h, 2)
+    except: return 0
 
 def antiguedad_texto(fi):
     try:
@@ -139,9 +151,41 @@ with st.spinner("⏳ Cargando datos..."):
     except Exception as e:
         st.error(f"❌ Error: {e}"); st.stop()
 
+# ── Calcular Utilizacion_Rec por agente ──
+# Promedio últimos 3 meses por agente / Techo_Perfil
+meses_orden = ["Septiembre","Octubre","Noviembre","Diciembre","Enero","Febrero","Marzo","Abril"]
+ultimos_3 = [m for m in meses_orden if m in hist_ag.columns][-3:]
+
+if ultimos_3 and 'Techo_Perfil' in hist_ag.columns:
+    hist_ag['Prom_3m'] = hist_ag[ultimos_3].mean(axis=1)
+    hist_ag['Utilizacion_Rec'] = (hist_ag['Prom_3m'] / hist_ag['Techo_Perfil'] * 100).round(1)
+else:
+    hist_ag['Prom_3m'] = None
+    hist_ag['Utilizacion_Rec'] = None
+
+# Merge Utilizacion_Rec al resumen
+resumen = resumen.merge(
+    hist_ag[['NOMBRE','Prom_3m','Utilizacion_Rec','Techo_Perfil']],
+    on='NOMBRE', how='left'
+)
+
+# Promedio últimos 3 meses del servicio
+top3_meses = [m for m in meses_orden if m in hist_ag.columns][-3:]
+if top3_meses:
+    prom_3m_servicio = round(hist_ag[top3_meses].mean().mean() * (100 if hist_ag[top3_meses].mean().mean() <= 1 else 1), 1)
+    # Si los valores son fracciones, multiplicar por 100
+    sample_val = hist_ag[top3_meses[0]].dropna().mean() if len(hist_ag[top3_meses[0]].dropna()) > 0 else 0
+    if sample_val <= 1:
+        prom_3m_servicio = round(hist_ag[top3_meses].mean().mean() * 100, 1)
+    else:
+        prom_3m_servicio = round(hist_ag[top3_meses].mean().mean(), 1)
+else:
+    prom_3m_servicio = 0
+
 resumen["Semaforo"]     = resumen["Utilizacion"].apply(semaforo_util)
 resumen["Semaforo_Adh"] = resumen["Adhesion"].apply(semaforo_adh)
 resumen["Semaforo_Ocu"] = resumen["Ocupacion"].apply(semaforo_ocu)
+resumen["Semaforo_Rec"] = resumen["Utilizacion_Rec"].apply(semaforo_rec)
 
 # ── Sidebar ──
 st.sidebar.title("🔍 Filtros")
@@ -157,7 +201,7 @@ st.sidebar.markdown(f"""
 <div style='background:#9b59b620; border-left:4px solid #9b59b6; padding:8px; border-radius:5px'>
     <p style='margin:0; font-size:12px; color:gray'>📊 Techo real servicio</p>
     <p style='margin:0; font-size:22px; font-weight:bold'>{techo_p90:.1f}%</p>
-    <p style='margin:0; font-size:11px; color:gray'>P90 últimos 3 meses<br>{meses_techo}</p>
+    <p style='margin:0; font-size:11px; color:gray'>P90 últimos 3 meses ÷ Obj. 86%<br>{meses_techo}</p>
 </div>""", unsafe_allow_html=True)
 
 if st.sidebar.button("🔄 Refrescar datos"):
@@ -178,8 +222,7 @@ ocu_min   = (ocu_prom / 100) * 60
 col1, col2, col3, col4, col5 = st.columns(5)
 col1.metric("👥 Agentes", len(df))
 
-# Utilización con objetivos
-niv_util  = semaforo_util(util_prom)
+niv_util = semaforo_util(util_prom)
 color_util = colores_semaforo[niv_util]
 col2.markdown(f"""
 <div style='background:{color_util}20; border-left:5px solid {color_util}; padding:10px; border-radius:5px'>
@@ -190,8 +233,7 @@ col2.markdown(f"""
     <p style='margin:0; font-size:11px; color:#9b59b6'>📊 Techo servicio: {techo_p90:.1f}%</p>
 </div>""", unsafe_allow_html=True)
 
-# Adhesión con objetivo
-niv_adh   = semaforo_adh(adh_prom)
+niv_adh = semaforo_adh(adh_prom)
 color_adh = colores_semaforo[niv_adh]
 col3.markdown(f"""
 <div style='background:{color_adh}20; border-left:5px solid {color_adh}; padding:10px; border-radius:5px'>
@@ -201,8 +243,7 @@ col3.markdown(f"""
     <p style='margin:0; font-size:11px; color:gray'>🎯 Objetivo: ≥ 95%</p>
 </div>""", unsafe_allow_html=True)
 
-# Ocupación con objetivo
-niv_ocu   = semaforo_ocu(ocu_prom)
+niv_ocu = semaforo_ocu(ocu_prom)
 color_ocu = colores_semaforo[niv_ocu]
 col4.markdown(f"""
 <div style='background:{color_ocu}20; border-left:5px solid {color_ocu}; padding:10px; border-radius:5px'>
@@ -212,19 +253,18 @@ col4.markdown(f"""
     <p style='margin:0; font-size:11px; color:gray'>🎯 Objetivo: 50-55% (≈{ocu_min:.1f} min/hora)</p>
 </div>""", unsafe_allow_html=True)
 
-# % vs techo servicio
-pct_techo = round(util_prom / techo_p90 * 100, 1) if techo_p90 > 0 else 0
-color_techo = "#2ecc71" if pct_techo >= 100 else ("#f1c40f" if pct_techo >= 85 else "#e74c3c")
+# Col5 → Promedio últimos 3 meses
+niv_p3m = semaforo_util(prom_3m_servicio)
+color_p3m = colores_semaforo[niv_p3m]
 col5.markdown(f"""
-<div style='background:{color_techo}20; border-left:5px solid {color_techo}; padding:10px; border-radius:5px'>
-    <p style='margin:0; font-size:13px; color:gray'>🎯 vs Techo Servicio</p>
-    <p style='margin:0; font-size:26px; font-weight:bold'>{pct_techo:.1f}%</p>
-    <p style='margin:0; font-size:12px'>Techo: {techo_p90:.1f}%</p>
-    <p style='margin:0; font-size:11px; color:gray'>{meses_techo}</p>
+<div style='background:{color_p3m}20; border-left:5px solid {color_p3m}; padding:10px; border-radius:5px'>
+    <p style='margin:0; font-size:13px; color:gray'>📅 Prom. últimos 3 meses</p>
+    <p style='margin:0; font-size:26px; font-weight:bold'>{prom_3m_servicio:.1f}%</p>
+    <p style='margin:0; font-size:12px'>{niv_p3m}</p>
+    <p style='margin:0; font-size:11px; color:gray'>{", ".join(ultimos_3)}</p>
 </div>""", unsafe_allow_html=True)
 
 st.markdown("---")
-meses_orden = ["Septiembre","Octubre","Noviembre","Diciembre","Enero","Febrero","Marzo","Abril"]
 
 tab1, tab2, tab3, tab4, tab5 = st.tabs([
     "📊 Resumen Mensual","🏅 Ranking y Acumulado",
@@ -324,18 +364,20 @@ with tab1:
     fig_cuartil.update_layout(height=400, plot_bgcolor="white")
     st.plotly_chart(fig_cuartil, use_container_width=True, key="fig_cuartil")
 
+    # Tabla — sin Techo_Perfil, Pct_Techo, Semaforo_Techo — con Utilizacion_Rec
     st.subheader("📋 Resumen Completo por Agente")
     cols_t = ["NOMBRE","JP","HRS_CONTRATO","ESTADO","Tramo_Antiguedad",
-              "Utilizacion","Semaforo","Techo_Perfil","Pct_Techo","Semaforo_Techo",
+              "Utilizacion","Semaforo",
+              "Utilizacion_Rec","Semaforo_Rec",
               "Adhesion","Semaforo_Adh","Ocupacion","Semaforo_Ocu","Cuartil_Util"]
     tabla = df[[c for c in cols_t if c in df.columns]].sort_values("Utilizacion", ascending=False).copy()
     for col in ["Utilizacion","Adhesion","Ocupacion"]:
         if col in tabla.columns:
             tabla[col] = tabla[col].apply(lambda x: f"{x:.1f}%" if pd.notna(x) else "")
-    if "Techo_Perfil" in tabla.columns:
-        tabla["Techo_Perfil"] = tabla["Techo_Perfil"].apply(lambda x: f"{x:.1f}%" if pd.notna(x) else "")
-    if "Pct_Techo" in tabla.columns:
-        tabla["Pct_Techo"] = tabla["Pct_Techo"].apply(lambda x: f"{x:.1f}%" if pd.notna(x) else "")
+    if "Utilizacion_Rec" in tabla.columns:
+        tabla = tabla.rename(columns={"Utilizacion_Rec":"Util. Rec. (%techo)"})
+        tabla["Util. Rec. (%techo)"] = tabla["Util. Rec. (%techo)"].apply(
+            lambda x: f"{x:.1f}%" if pd.notna(x) else "")
     st.dataframe(tabla, use_container_width=True, key="tabla1")
 
 # ══════════════════════════════════════════
@@ -471,6 +513,11 @@ with tab3:
     meses_crit = ag.get("Meses_Critico","—")
     techo_ag   = ag.get("Techo_Perfil", None)
 
+    # Utilización mes en curso
+    ag_resumen = resumen[resumen["NOMBRE"]==agente_sel]
+    util_mes_actual = ag_resumen["Utilizacion"].values[0] if not ag_resumen.empty else None
+    util_mes_txt = f"{util_mes_actual:.1f}%" if util_mes_actual and pd.notna(util_mes_actual) else "—"
+
     ag_hrs = hrs_mes[hrs_mes["NOMBRE"]==agente_sel]
     h_con = h_pro = h_imp = h_tur = h_dis = h_des = h_exc = "—"
     if not ag_hrs.empty:
@@ -485,7 +532,11 @@ with tab3:
     st.markdown(f"""
     <div style='background:{color_ag}20; border-left:5px solid {color_ag};
                 padding:15px; border-radius:8px; margin-bottom:15px'>
-        <h4 style='margin:0'>{agente_sel}</h4>
+        <h4 style='margin:0'>{agente_sel} &nbsp;
+            <span style='font-size:14px; font-weight:normal; color:gray'>
+            | Utilización mes en curso: <b style='color:white'>{util_mes_txt}</b>
+            </span>
+        </h4>
         <p style='margin:5px 0'>
             📋 Estado: <b>{estado}</b> &nbsp;|&nbsp;
             ⏰ Contrato: <b>{contrato} hrs</b> &nbsp;|&nbsp;
@@ -612,11 +663,11 @@ with tab4:
     if "NOMBRE" in hist_ag.columns and "Veces_Critico" in hist_ag.columns:
         crit_fil = crit_fil.merge(hist_ag[["NOMBRE","Veces_Critico","Meses_Critico"]],
                                   on="NOMBRE", how="left")
-    cm2 = crit_fil.copy()
+    # Ocultar Techo_Perfil y Pct_Techo
+    cols_crit_show = ["NOMBRE","JP","Utilizacion","Adhesion","Ocupacion","Veces_Critico","Meses_Critico"]
+    cm2 = crit_fil[[c for c in cols_crit_show if c in crit_fil.columns]].copy()
     for col in ["Utilizacion","Adhesion","Ocupacion"]:
         if col in cm2.columns: cm2[col] = cm2[col].apply(lambda x: f"{x:.1f}%" if pd.notna(x) else "")
-    if "Techo_Perfil" in cm2.columns:
-        cm2["Techo_Perfil"] = cm2["Techo_Perfil"].apply(lambda x: f"{x:.1f}%" if pd.notna(x) else "")
     st.dataframe(cm2, use_container_width=True, key="tabla_criticos")
 
     st.markdown("#### 📅 Histórico Completo — Apariciones en Crítico")
@@ -627,11 +678,10 @@ with tab4:
     st.dataframe(tch, use_container_width=True, key="tabla_crit_hist")
 
 # ══════════════════════════════════════════
-# TAB 5 — CONTROL DE HORAS
+# TAB 5
 # ══════════════════════════════════════════
 with tab5:
     st.subheader("⏱️ Control de Horas — Análisis de Fuga")
-    st.info("ℹ️ Las horas improductivas incluyen **solo el exceso** sobre el tiempo de descanso planificado según contrato.", icon="💡")
 
     vista = st.radio("Ver por:", ["Mes","Semana","Día"], horizontal=True, key="vista_hrs")
     jp_h = ["Todos"] + sorted(hrs_mes["JP"].dropna().unique().tolist())
@@ -653,7 +703,6 @@ with tab5:
     ag_sel = st.selectbox("Filtrar agente", ags_h, key="agente_hrs")
     if ag_sel != "Todos": dh = dh[dh["NOMBRE"]==ag_sel]
 
-    # Estados para gráfico — sin Descanso ni Comida raw, solo exceso
     estados_graf = {
         'EnCola_hrs':           '📞 En Cola',
         'Ocioso_hrs':           '💤 Ocioso',
@@ -671,28 +720,17 @@ with tab5:
         'Desconexion_hrs':      '⚫ Desconexión Total'
     }
 
-    # Tabla completa incluye descanso real para referencia
     estados_tabla = {
-        'Conectado_hrs':         '🔌 Conectado',
-        'Turno_hrs':             '📅 Turno Programado',
-        'Hrs_Productivas':       '✅ Total Productivas',
-        'Hrs_Improductivas':     '❌ Total Improductivas',
-        'Desconexion_hrs':       '⚫ Desconexión',
-        'Disponible_hrs':        '🟡 Disponible',
-        'EnCola_hrs':            '📞 En Cola',
-        'Ocioso_hrs':            '💤 Ocioso',
-        'Interactuando_hrs':     '🗣️ Interactuando',
-        'Descanso_hrs':          '☕ Descanso real',
-        'Comida_hrs':            '🍽️ Comida real',
-        'Descanso_Exceso_hrs':   '⚠️ Exceso descanso',
-        'Bano_hrs':              '🚽 Baño',
-        'AusenteOcupado_hrs':    '🚫 Ausente Ocupado',
-        'Reunion_hrs':           '👥 Reunión',
-        'Capacitacion_hrs':      '📚 Capacitación',
-        'NoResponde_hrs':        '📵 No Responde',
-        'Gestion_hrs':           '📝 Gestión',
-        'LlamadaManual_hrs':     '📲 Llamada Manual',
-        'PausaActiva_hrs':       '🏃 Pausa Activa'
+        'Conectado_hrs':'🔌 Conectado','Turno_hrs':'📅 Turno',
+        'Hrs_Productivas':'✅ Productivas','Hrs_Improductivas':'❌ Improductivas',
+        'Desconexion_hrs':'⚫ Desconexión','Disponible_hrs':'🟡 Disponible',
+        'EnCola_hrs':'📞 En Cola','Ocioso_hrs':'💤 Ocioso',
+        'Interactuando_hrs':'🗣️ Interactuando','Descanso_hrs':'☕ Descanso real',
+        'Comida_hrs':'🍽️ Comida real','Descanso_Exceso_hrs':'⚠️ Exceso descanso',
+        'Bano_hrs':'🚽 Baño','AusenteOcupado_hrs':'🚫 Ausente Ocupado',
+        'Reunion_hrs':'👥 Reunión','Capacitacion_hrs':'📚 Capacitación',
+        'NoResponde_hrs':'📵 No Responde','Gestion_hrs':'📝 Gestión',
+        'LlamadaManual_hrs':'📲 Llamada Manual','PausaActiva_hrs':'🏃 Pausa Activa'
     }
 
     prod_labels = ['📞 En Cola','💤 Ocioso','🗣️ Interactuando']
@@ -715,15 +753,9 @@ with tab5:
                 <p style='margin:0; font-size:15px; font-weight:bold'>{rh.get(kh,'—')}</p>
             </div>""", unsafe_allow_html=True)
 
-        exc_min = hhmmss_a_min(rh.get('Descanso_Exceso_hrs','00:00:00'))
-        if exc_min > 0:
-            st.warning(f"⚠️ **Exceso de descanso/comida:** {rh.get('Descanso_Exceso_hrs','—')} — Este tiempo se contabiliza como improductivo y afecta directamente la utilización.")
-        else:
-            st.success("✅ El agente cumple con sus tiempos de descanso planificados.")
-
         st.markdown("---")
 
-        # Gráfico de barras — sin Descanso/Comida raw
+        # Gráfico barras — eje X en horas
         estados_min = {}
         for k, v in estados_graf.items():
             mv = hhmmss_a_min(rh.get(k,'00:00:00'))
@@ -732,25 +764,31 @@ with tab5:
         total_min = sum(estados_min.values())
         est_sort = dict(sorted(estados_min.items(), key=lambda x: x[1], reverse=True))
 
+        # Convertir a horas para el eje X
+        est_sort_hrs = {k: v/60 for k,v in est_sort.items()}
+
         colores_b = []
-        for k in est_sort:
+        for k in est_sort_hrs:
             if k in prod_labels: colores_b.append('#2ecc71')
             elif k == '⚫ Desconexión Total': colores_b.append('#7f8c8d')
             elif k == '🟡 Disponible': colores_b.append('#f39c12')
             elif k == '⚠️ Exceso Descanso/Comida': colores_b.append('#e67e22')
             else: colores_b.append('#e74c3c')
 
-        textos_b = [f"{min_a_hhmmss(v)} ({v/total_min*100:.1f}%)" if total_min > 0 else min_a_hhmmss(v)
-                   for v in est_sort.values()]
+        textos_b = [f"{min_a_hhmmss(v*60)} ({v*60/total_min*100:.1f}%)" if total_min > 0 else min_a_hhmmss(v*60)
+                   for v in est_sort_hrs.values()]
 
         fig_hrs = go.Figure(go.Bar(
-            x=list(est_sort.values()), y=list(est_sort.keys()),
+            x=list(est_sort_hrs.values()),
+            y=list(est_sort_hrs.keys()),
             orientation='h', marker_color=colores_b,
             text=textos_b, textposition='outside', textfont=dict(size=11)
         ))
         fig_hrs.update_layout(
             title=f"Horas por Estado — {ag_sel} — {th}",
-            height=560, plot_bgcolor="white", xaxis_title="Minutos"
+            height=560, plot_bgcolor="white",
+            xaxis_title="Horas",
+            margin=dict(t=60)
         )
         st.plotly_chart(fig_hrs, use_container_width=True, key="fig_hrs")
 
@@ -769,22 +807,35 @@ with tab5:
                 marker_colors=['#2ecc71','#e74c3c','#f39c12','#7f8c8d']
             ))
             fig_pie.update_traces(textinfo='label+percent', textfont=dict(size=11))
-            fig_pie.update_layout(title="Distribución de Horas", height=420)
+            fig_pie.update_layout(
+                title="Distribución de Horas",
+                height=450,
+                margin=dict(t=60)
+            )
             st.plotly_chart(fig_pie, use_container_width=True, key="fig_pie")
 
         with col_p2:
-            # Desglose improductivas sin Desconexión ni Disponible
             imp_est = {k:v for k,v in estados_min.items()
                       if k not in prod_labels
                       and k not in ['⚫ Desconexión Total','🟡 Disponible']
                       and v > 0}
             if imp_est:
+                # Labels con horas
+                labels_imp = [f"{k}\n{min_a_hhmmss(v)}" for k,v in imp_est.items()]
                 fig_p2 = go.Figure(go.Pie(
-                    labels=list(imp_est.keys()),
+                    labels=labels_imp,
                     values=list(imp_est.values()), hole=0.4
                 ))
-                fig_p2.update_traces(textinfo='label+percent', textfont=dict(size=11))
-                fig_p2.update_layout(title="🔍 Desglose Improductivas", height=420)
+                fig_p2.update_traces(
+                    textinfo='percent',
+                    textfont=dict(size=11),
+                    hovertemplate='%{label}<br>%{percent}'
+                )
+                fig_p2.update_layout(
+                    title="🔍 Desglose Improductivas",
+                    height=450,
+                    margin=dict(t=60)
+                )
                 st.plotly_chart(fig_p2, use_container_width=True, key="fig_pie2")
 
     st.markdown("---")
