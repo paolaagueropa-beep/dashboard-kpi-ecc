@@ -251,6 +251,7 @@ st.sidebar.markdown("""
 </div>""", unsafe_allow_html=True)
 
 st.sidebar.markdown("---")
+if st.sidebar.button("🔄 Refrescar datos"):
     st.session_state.cache_key = int(time.time())
     st.cache_data.clear(); st.rerun()
 
