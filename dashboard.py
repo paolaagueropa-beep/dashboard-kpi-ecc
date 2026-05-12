@@ -15,7 +15,7 @@ st.set_page_config(
     layout="wide"
 )
 
-DRIVE_ID = "https://docs.google.com/spreadsheets/d/1aHTXVmo8zChZTJVMNEKVkjSJkeg1aDJ9/edit?usp=drive_link&ouid=116422229670645507133&rtpof=true&sd=true"
+DRIVE_ID = "1aHTXVmo8zChZTJVMNEKVkjSJkeg1aDJ9"
 
 @st.cache_data(ttl=0)   # TTL=0: Streamlit no expira por tiempo; la invalidación la maneja cache_key
 def cargar_datos(cache_key):
