@@ -35,8 +35,10 @@ def check_login(username: str, password: str):
         users = dict(st.secrets.get("users", {}))
     except Exception:
         users = {}
-    if username in users:
-        user = dict(users[username])
+    # Normalizar: el usuario escribe "carlos.pozas" pero la clave TOML es "carlos_pozas"
+    username_key = username.strip().lower().replace(".", "_").replace("-", "_").replace(" ", "_")
+    if username_key in users:
+        user = dict(users[username_key])
         stored = user.get("password_hash", "")
         if hmac.compare_digest(make_hash(password), stored):
             return True, user
