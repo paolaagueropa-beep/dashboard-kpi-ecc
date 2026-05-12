@@ -15,12 +15,15 @@ st.set_page_config(
     layout="wide"
 )
 
-DRIVE_ID = "12zc9C9pw8ltG8yXZfHtBBX_EJaEYobgE"
+DRIVE_ID = "https://docs.google.com/spreadsheets/d/1aHTXVmo8zChZTJVMNEKVkjSJkeg1aDJ9/edit?usp=drive_link&ouid=116422229670645507133&rtpof=true&sd=true"
 
-@st.cache_data(ttl=300)
+@st.cache_data(ttl=0)   # TTL=0: Streamlit no expira por tiempo; la invalidación la maneja cache_key
 def cargar_datos(cache_key):
-    url = f"https://drive.google.com/uc?export=download&id={DRIVE_ID}&t={cache_key}"
-    response = requests.get(url)
+    """cache_key cambia cada 5 minutos → refresco automático sin intervención del usuario."""
+    # Añadir timestamp al URL para evitar que el CDN de Google Drive sirva versión cacheada
+    url = f"https://drive.google.com/uc?export=download&confirm=t&id={DRIVE_ID}&t={cache_key}"
+    response = requests.get(url, timeout=60)
+    response.raise_for_status()
     contenido = BytesIO(response.content)
     hojas = ['Resumen_Agentes','Resumen_Jefatura','JP_Semana','JP_Dia',
              'Historico_Agente','Historico_Mensual','Dist_Cuartiles',
@@ -134,12 +137,21 @@ st.markdown(f"""
 </div>""", unsafe_allow_html=True)
 st.markdown("---")
 
-if 'cache_key' not in st.session_state:
-    st.session_state.cache_key = int(time.time())
+# ── Carga de datos con auto-refresh cada 5 minutos ──
+# cache_key cambia cada 300 segundos → Streamlit descarga el Excel actualizado
+# sin que el usuario tenga que hacer nada
+import math
+_cache_key_auto = math.floor(time.time() / 300)
+
+# Botón para forzar refresco inmediato (ignora los 5 min y fuerza nueva descarga)
+if 'force_refresh' not in st.session_state:
+    st.session_state.force_refresh = 0
 
 with st.spinner("⏳ Cargando datos..."):
     try:
-        datos        = cargar_datos(st.session_state.cache_key)
+        # Usar _cache_key_auto + force_refresh como clave compuesta
+        cache_key_final = _cache_key_auto * 10000 + st.session_state.force_refresh
+        datos        = cargar_datos(cache_key_final)
         resumen      = datos['Resumen_Agentes']
         jefatura     = datos['Resumen_Jefatura']
         jp_semana    = datos['JP_Semana']
@@ -157,6 +169,26 @@ with st.spinner("⏳ Cargando datos..."):
         meta         = datos['Metadata'].iloc[0]
         techo_p90    = float(meta.get('Techo_Real_P90', 0))
         meses_techo  = meta.get('Meses_Calculados', '')
+
+        # ── Normalizar meses numéricos → nombres ────────────────
+        # Defensa extra: si el Excel trae "05" en vez de "Mayo", convertir aquí
+        _meses_map = {
+            '01':'Enero','02':'Febrero','03':'Marzo','04':'Abril',
+            '05':'Mayo','06':'Junio','07':'Julio','08':'Agosto',
+            '09':'Septiembre','10':'Octubre','11':'Noviembre','12':'Diciembre',
+            '1':'Enero','2':'Febrero','3':'Marzo','4':'Abril',
+            '5':'Mayo','6':'Junio','7':'Julio','8':'Agosto',
+            '9':'Septiembre',
+        }
+        def norm_mes(v):
+            s = str(v).strip()
+            return _meses_map.get(s, s)
+
+        for hoja_mes in ['Dist_Cuartiles','Historico_Mensual']:
+            if 'Mes' in datos[hoja_mes].columns:
+                datos[hoja_mes]['Mes'] = datos[hoja_mes]['Mes'].apply(norm_mes)
+        # ──────────────────────────────────────────────────────────
+
         st.success("✅ Datos cargados")
     except Exception as e:
         st.error(f"❌ Error: {e}"); st.stop()
@@ -239,9 +271,10 @@ st.sidebar.markdown("""
 </div>""", unsafe_allow_html=True)
 
 st.sidebar.markdown("---")
-if st.sidebar.button("🔄 Refrescar datos"):
-    st.session_state.cache_key = int(time.time())
-    st.cache_data.clear(); st.rerun()
+if st.sidebar.button("🔄 Refrescar datos ahora"):
+    st.session_state.force_refresh = st.session_state.get('force_refresh', 0) + 1
+    st.cache_data.clear()
+    st.rerun()
 
 df = resumen.copy()
 if supervisor_sel != "Todos": df = df[df["JP"] == supervisor_sel]
