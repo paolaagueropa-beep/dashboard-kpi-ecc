@@ -21,7 +21,7 @@ st.set_page_config(
 # ════════════════════════════════════════════════════════════
 # CONFIGURACIÓN — ACTUALIZA DRIVE_ID CON EL ID DE Dashboard_KPI_ECC.xlsx
 # ════════════════════════════════════════════════════════════
-DRIVE_ID = "1n37x4ufR_u5IcDGXqhm13FYyaY48NGjX"   # ← reemplazar por ID del archivo fijo
+DRIVE_ID = "12zc9C9pw8ltG8yXZfHtBBX_EJaEYobgE"   # ← reemplazar por ID del archivo fijo
 OBJETIVO_COPC_DEFAULT = 86.0
 
 # ════════════════════════════════════════════════════════════
@@ -283,8 +283,20 @@ def fmt_pct(x, dec=1):
 def fmt_pp(x, dec=1):
     try:
         if pd.isna(x): return "—"
-        sign = "+" if float(x) > 0 else ""
-        return f"{sign}{float(x):.{dec}f} pp"
+        return f"{float(x):.{dec}f} pp"
+    except Exception:
+        return "—"
+
+def fmt_brecha_clara(x, dec=1):
+    """Texto a prueba de interpretaciones: brecha positiva = faltan puntos para llegar al techo."""
+    try:
+        if pd.isna(x): return "—"
+        v = float(x)
+        if v > 0:
+            return f"Faltan {v:.{dec}f} pp"
+        if v < 0:
+            return f"Supera por {abs(v):.{dec}f} pp"
+        return "En su techo"
     except Exception:
         return "—"
 
@@ -376,14 +388,32 @@ if 'Orden_Mes' in hist_mensual.columns and 'Mes' in hist_mensual.columns:
     meses_df = hist_mensual[['Mes','Orden_Mes']].dropna().drop_duplicates().sort_values('Orden_Mes')
     meses_disponibles = meses_df['Mes'].tolist()
 else:
+    meses_df = pd.DataFrame(columns=['Mes','Orden_Mes'])
     meses_disponibles = [m for m in meses_orden if m in hist_ag.columns]
 if not meses_disponibles:
     meses_disponibles = [str(meta.get('Mes_Actual', 'Mes actual'))]
 mes_default_idx = len(meses_disponibles) - 1
 mes_sel = st.sidebar.selectbox("Mes", meses_disponibles, index=mes_default_idx)
+mes_actual_datos = str(meta.get('Mes_Actual', meses_disponibles[-1]))
+
+# Filtro de mes global: todo lo que tenga Mes, Orden_Mes o Fecha se filtra;
+# si una hoja no tiene referencia mensual y se consulta un mes pasado, se deja vacía para no mostrar datos del mes actual por error.
+def filtrar_df_por_mes(df_base, mes_consulta):
+    if not isinstance(df_base, pd.DataFrame) or df_base.empty:
+        return pd.DataFrame() if isinstance(df_base, pd.DataFrame) else df_base
+    df2 = df_base.copy()
+    if 'Mes' in df2.columns:
+        return df2[df2['Mes'].apply(norm_mes).astype(str) == str(mes_consulta)].copy()
+    if 'Orden_Mes' in df2.columns and 'Orden_Mes' in meses_df.columns:
+        ordenes = meses_df[meses_df['Mes'].astype(str) == str(mes_consulta)]['Orden_Mes'].unique().tolist()
+        return df2[df2['Orden_Mes'].isin(ordenes)].copy() if ordenes else df2.iloc[0:0].copy()
+    if 'Fecha' in df2.columns:
+        fechas = pd.to_datetime(df2['Fecha'], errors='coerce')
+        meses_fecha = fechas.dt.month.astype('Int64').astype(str).map(_meses_map).fillna(df2['Fecha'].astype(str))
+        return df2[meses_fecha == str(mes_consulta)].copy()
+    return df2.copy() if str(mes_consulta) == str(mes_actual_datos) else df2.iloc[0:0].copy()
 
 # Crear resumen del mes seleccionado: usa Resumen_Agentes si es el mes actual, histórico si se consulta mes previo
-mes_actual_datos = str(meta.get('Mes_Actual', meses_disponibles[-1]))
 if 'Mes' in resumen_raw.columns and mes_sel in resumen_raw['Mes'].astype(str).unique():
     resumen_mes = resumen_raw[resumen_raw['Mes'].astype(str) == mes_sel].copy()
 elif mes_sel == mes_actual_datos:
@@ -442,6 +472,16 @@ for tmp in [resumen_mes, jefatura_mes]:
     if 'Adhesion' in tmp.columns: tmp['Semaforo_Adh'] = tmp['Adhesion'].apply(semaforo_adh)
     if 'Ocupacion' in tmp.columns: tmp['Semaforo_Ocu'] = tmp['Ocupacion'].apply(semaforo_ocu)
 
+# Hojas filtradas globalmente por mes seleccionado
+semanal_mes = filtrar_df_por_mes(semanal, mes_sel)
+diario_mes = filtrar_df_por_mes(diario, mes_sel)
+jp_semana_mes = filtrar_df_por_mes(jp_semana, mes_sel)
+jp_dia_mes = filtrar_df_por_mes(jp_dia, mes_sel)
+hrs_mes_filtrado = filtrar_df_por_mes(hrs_mes, mes_sel)
+hrs_sem_filtrado = filtrar_df_por_mes(hrs_sem, mes_sel)
+hrs_dia_filtrado = filtrar_df_por_mes(hrs_dia, mes_sel)
+criticos_mes = filtrar_df_por_mes(criticos, mes_sel)
+
 # Control de acceso
 resumen_full = resumen_mes.copy()
 hist_ag_full = hist_ag.copy()
@@ -451,26 +491,26 @@ if is_admin:
     resumen_scope = resumen_full.copy()
     hist_ag_scope = hist_ag_full.copy()
     jefatura_scope = jefatura_full.copy()
-    semanal_scope = semanal.copy()
-    diario_scope = diario.copy()
-    criticos_scope = criticos.copy()
-    hrs_mes_scope = hrs_mes.copy()
-    hrs_sem_scope = hrs_sem.copy()
-    hrs_dia_scope = hrs_dia.copy()
-    jp_sem_scope = jp_semana.copy()
-    jp_dia_scope = jp_dia.copy()
+    semanal_scope = semanal_mes.copy()
+    diario_scope = diario_mes.copy()
+    criticos_scope = criticos_mes.copy()
+    hrs_mes_scope = hrs_mes_filtrado.copy()
+    hrs_sem_scope = hrs_sem_filtrado.copy()
+    hrs_dia_scope = hrs_dia_filtrado.copy()
+    jp_sem_scope = jp_semana_mes.copy()
+    jp_dia_scope = jp_dia_mes.copy()
 else:
     resumen_scope = resumen_full[resumen_full['JP'] == user_jp].copy() if 'JP' in resumen_full.columns else resumen_full.copy()
     hist_ag_scope = hist_ag_full[hist_ag_full['JP'] == user_jp].copy() if 'JP' in hist_ag_full.columns else hist_ag_full.copy()
     jefatura_scope = jefatura_full[jefatura_full['JP'] == user_jp].copy() if 'JP' in jefatura_full.columns else jefatura_full.copy()
-    semanal_scope = semanal[semanal['JP'] == user_jp].copy() if 'JP' in semanal.columns else semanal.copy()
-    diario_scope = diario[diario['JP'] == user_jp].copy() if 'JP' in diario.columns else diario.copy()
-    criticos_scope = criticos[criticos['JP'] == user_jp].copy() if 'JP' in criticos.columns else criticos.copy()
-    hrs_mes_scope = hrs_mes[hrs_mes['JP'] == user_jp].copy() if 'JP' in hrs_mes.columns else hrs_mes.copy()
-    hrs_sem_scope = hrs_sem[hrs_sem['JP'] == user_jp].copy() if 'JP' in hrs_sem.columns else hrs_sem.copy()
-    hrs_dia_scope = hrs_dia[hrs_dia['JP'] == user_jp].copy() if 'JP' in hrs_dia.columns else hrs_dia.copy()
-    jp_sem_scope = jp_semana[jp_semana['JP'] == user_jp].copy() if 'JP' in jp_semana.columns else jp_semana.copy()
-    jp_dia_scope = jp_dia[jp_dia['JP'] == user_jp].copy() if 'JP' in jp_dia.columns else jp_dia.copy()
+    semanal_scope = semanal_mes[semanal_mes['JP'] == user_jp].copy() if 'JP' in semanal_mes.columns else semanal_mes.copy()
+    diario_scope = diario_mes[diario_mes['JP'] == user_jp].copy() if 'JP' in diario_mes.columns else diario_mes.copy()
+    criticos_scope = criticos_mes[criticos_mes['JP'] == user_jp].copy() if 'JP' in criticos_mes.columns else criticos_mes.copy()
+    hrs_mes_scope = hrs_mes_filtrado[hrs_mes_filtrado['JP'] == user_jp].copy() if 'JP' in hrs_mes_filtrado.columns else hrs_mes_filtrado.copy()
+    hrs_sem_scope = hrs_sem_filtrado[hrs_sem_filtrado['JP'] == user_jp].copy() if 'JP' in hrs_sem_filtrado.columns else hrs_sem_filtrado.copy()
+    hrs_dia_scope = hrs_dia_filtrado[hrs_dia_filtrado['JP'] == user_jp].copy() if 'JP' in hrs_dia_filtrado.columns else hrs_dia_filtrado.copy()
+    jp_sem_scope = jp_semana_mes[jp_semana_mes['JP'] == user_jp].copy() if 'JP' in jp_semana_mes.columns else jp_semana_mes.copy()
+    jp_dia_scope = jp_dia_mes[jp_dia_mes['JP'] == user_jp].copy() if 'JP' in jp_dia_mes.columns else jp_dia_mes.copy()
 
 # Sidebar filtro supervisor reemplaza Horas Contrato. Sin antigüedad.
 if is_admin:
@@ -479,6 +519,17 @@ if is_admin:
     df = resumen_scope.copy()
     if supervisor_sel != "Todos" and 'JP' in df.columns:
         df = df[df['JP'] == supervisor_sel]
+        resumen_scope = resumen_scope[resumen_scope['JP'] == supervisor_sel].copy() if 'JP' in resumen_scope.columns else resumen_scope
+        hist_ag_scope = hist_ag_scope[hist_ag_scope['JP'] == supervisor_sel].copy() if 'JP' in hist_ag_scope.columns else hist_ag_scope
+        jefatura_scope = jefatura_scope[jefatura_scope['JP'] == supervisor_sel].copy() if 'JP' in jefatura_scope.columns else jefatura_scope
+        semanal_scope = semanal_scope[semanal_scope['JP'] == supervisor_sel].copy() if 'JP' in semanal_scope.columns else semanal_scope
+        diario_scope = diario_scope[diario_scope['JP'] == supervisor_sel].copy() if 'JP' in diario_scope.columns else diario_scope
+        criticos_scope = criticos_scope[criticos_scope['JP'] == supervisor_sel].copy() if 'JP' in criticos_scope.columns else criticos_scope
+        hrs_mes_scope = hrs_mes_scope[hrs_mes_scope['JP'] == supervisor_sel].copy() if 'JP' in hrs_mes_scope.columns else hrs_mes_scope
+        hrs_sem_scope = hrs_sem_scope[hrs_sem_scope['JP'] == supervisor_sel].copy() if 'JP' in hrs_sem_scope.columns else hrs_sem_scope
+        hrs_dia_scope = hrs_dia_scope[hrs_dia_scope['JP'] == supervisor_sel].copy() if 'JP' in hrs_dia_scope.columns else hrs_dia_scope
+        jp_sem_scope = jp_sem_scope[jp_sem_scope['JP'] == supervisor_sel].copy() if 'JP' in jp_sem_scope.columns else jp_sem_scope
+        jp_dia_scope = jp_dia_scope[jp_dia_scope['JP'] == supervisor_sel].copy() if 'JP' in jp_dia_scope.columns else jp_dia_scope
 else:
     st.sidebar.info(f"👤 Viendo equipo de:\n**{user_jp}**")
     supervisor_sel = user_jp
@@ -496,23 +547,24 @@ if cumplimiento_techo_servicio is None or cumplimiento_techo_servicio == 0:
 brecha_servicio = techo_estructural_servicio - resumen_full['Utilizacion'].mean() if 'Utilizacion' in resumen_full.columns and techo_estructural_servicio else 0
 
 st.sidebar.markdown("---")
-st.sidebar.markdown(f"""
-<div style='background:#9b59b620; border-left:4px solid #9b59b6; padding:8px; border-radius:5px'>
-    <p style='margin:0; font-size:12px; color:gray'>📊 Capacidad estructural del servicio</p>
-    <p style='margin:0; font-size:22px; font-weight:bold'>{techo_estructural_servicio:.1f}%</p>
-    <p style='margin:0; font-size:11px; color:gray'>Máximo alcanzable según composición contractual</p>
-</div>""", unsafe_allow_html=True)
+util_actual_servicio = resumen_full['Utilizacion'].mean() if 'Utilizacion' in resumen_full.columns and len(resumen_full) else 0
 st.sidebar.markdown(f"""
 <div style='background:#3498db20; border-left:4px solid #3498db; padding:8px; border-radius:5px; margin-top:8px'>
     <p style='margin:0; font-size:12px; color:gray'>🎯 Objetivo COPC</p>
     <p style='margin:0; font-size:20px; font-weight:bold'>{objetivo_copc:.1f}%</p>
-    <p style='margin:0; font-size:11px; color:gray'>Referencia corporativa</p>
+    <p style='margin:0; font-size:11px; color:gray'>Referencia corporativa de capacidad operativa</p>
+</div>""", unsafe_allow_html=True)
+st.sidebar.markdown(f"""
+<div style='background:#9b59b620; border-left:4px solid #9b59b6; padding:8px; border-radius:5px; margin-top:8px'>
+    <p style='margin:0; font-size:12px; color:gray'>📊 Capacidad estructural del servicio</p>
+    <p style='margin:0; font-size:22px; font-weight:bold'>{techo_estructural_servicio:.1f}%</p>
+    <p style='margin:0; font-size:11px; color:gray'>Máximo alcanzable según composición contractual de la dotación</p>
 </div>""", unsafe_allow_html=True)
 st.sidebar.markdown(f"""
 <div style='background:#2ecc7120; border-left:4px solid #2ecc71; padding:8px; border-radius:5px; margin-top:8px'>
-    <p style='margin:0; font-size:12px; color:gray'>✅ Cumplimiento del techo servicio</p>
+    <p style='margin:0; font-size:12px; color:gray'>✅ Avance hacia capacidad máxima</p>
     <p style='margin:0; font-size:20px; font-weight:bold'>{cumplimiento_techo_servicio:.1f}%</p>
-    <p style='margin:0; font-size:11px; color:gray'>Brecha actual vs techo: {brecha_servicio:.1f} pp</p>
+    <p style='margin:0; font-size:11px; color:gray'>La utilización actual ({util_actual_servicio:.1f}%) equivale al {cumplimiento_techo_servicio:.1f}% del techo máximo del servicio. Brecha por cerrar: {brecha_servicio:.1f} pp.</p>
 </div>""", unsafe_allow_html=True)
 
 st.sidebar.markdown("""
@@ -624,7 +676,7 @@ with tab1:
             dist.columns = ['Nivel','Agentes']
             fig2 = px.pie(dist, values='Agentes', names='Nivel', color='Nivel', color_discrete_map=colores_semaforo, hole=0.4)
             fig2.update_traces(textinfo="label+percent+value", textfont=dict(size=12))
-            fig2.update_layout(height=340)
+            fig2.update_layout(height=430, margin=dict(t=60,b=40,l=20,r=20), legend=dict(orientation='h', y=-0.1))
             st.plotly_chart(fig2, use_container_width=True, key="fig2_resumen")
         else:
             st.info("Sin datos para distribución.")
@@ -635,7 +687,7 @@ with tab1:
             fig_techo = go.Figure()
             fig_techo.add_trace(go.Bar(name='Utilización real', y=jt['JP'], x=jt['Utilizacion'], orientation='h', marker_color='#3498db', text=jt['Utilizacion'], texttemplate='%{text:.1f}%'))
             fig_techo.add_trace(go.Bar(name='Techo equipo', y=jt['JP'], x=jt['Techo_Estructural_JP'], orientation='h', marker_color='#9b59b6', text=jt['Techo_Estructural_JP'], texttemplate='%{text:.1f}%'))
-            fig_techo.update_layout(barmode='group', height=420, plot_bgcolor='white', xaxis_title='Porcentaje (%)')
+            fig_techo.update_traces(textposition='outside', textfont=dict(size=11)); fig_techo.update_layout(barmode='group', height=max(520, 42*len(jt)), plot_bgcolor='white', xaxis_title='Porcentaje (%)', margin=dict(l=180,r=80,t=70,b=40))
             st.plotly_chart(fig_techo, use_container_width=True, key="fig_techo_jp")
         else:
             st.info("El techo por jefatura no está disponible para esta selección.")
@@ -683,6 +735,17 @@ with tab1:
 
     cuartiles_opc = ['Todos'] + sorted(df_tabla['Cuartil_Techo'].dropna().unique().tolist(), key=ordenar_cuartil) if 'Cuartil_Techo' in df_tabla.columns else ['Todos']
     cuartil_sel = st.selectbox("Filtrar por cuartil/cumplimiento techo", cuartiles_opc, key="cuartil_tab1")
+    explicacion_cuartil = {
+        'Q0': 'Q0 - Requiere seguimiento: cumplimiento de techo menor a 75%. El agente está muy lejos de su máximo posible.',
+        'Q1': 'Q1 - Oportunidad de mejora: cumplimiento de techo entre 75% y 84%. Aún hay brecha importante por trabajar.',
+        'Q2': 'Q2 - Buen resultado: cumplimiento de techo entre 85% y 89%. Está acercándose a su máximo posible.',
+        'Q3': 'Q3 - Muy buen trabajo: cumplimiento de techo entre 90% y 94%. Opera cerca de su capacidad estructural.',
+        'Q4': 'Q4 - Excelente: cumplimiento de techo de 95% o más. Opera prácticamente en su máximo posible.'
+    }
+    if cuartil_sel != 'Todos':
+        st.caption(explicacion_cuartil.get(str(cuartil_sel)[:2], 'La cuartilización se calcula sobre Cumplimiento de Techo = Utilización actual / Utilización máxima por perfil.'))
+    else:
+        st.caption('Cuartil calculado sobre Cumplimiento de Techo = Utilización actual / Utilización máxima por perfil. Mientras más alto el cuartil, más cerca está el agente de su máximo posible.')
     if cuartil_sel != 'Todos' and 'Cuartil_Techo' in df_tabla.columns:
         df_tabla = df_tabla[df_tabla['Cuartil_Techo'] == cuartil_sel]
 
@@ -691,7 +754,7 @@ with tab1:
 
     df_tabla['Utilización Máxima Perfil'] = df_tabla['Techo_Perfil'].apply(fmt_pct) if 'Techo_Perfil' in df_tabla.columns else '—'
     df_tabla['Utilización'] = df_tabla['Utilizacion'].apply(fmt_pct) if 'Utilizacion' in df_tabla.columns else '—'
-    df_tabla['Brecha vs Techo'] = df_tabla['Brecha_vs_Techo'].apply(fmt_pp) if 'Brecha_vs_Techo' in df_tabla.columns else '—'
+    df_tabla['Puntos faltantes al techo'] = df_tabla['Brecha_vs_Techo'].apply(fmt_brecha_clara) if 'Brecha_vs_Techo' in df_tabla.columns else '—'
     df_tabla['Adhesión'] = df_tabla['Adhesion'].apply(fmt_pct) if 'Adhesion' in df_tabla.columns else '—'
     df_tabla['Ocupación'] = df_tabla['Ocupacion'].apply(fmt_pct) if 'Ocupacion' in df_tabla.columns else '—'
     df_tabla['Cuartil'] = df_tabla['Cuartil_Techo'] if 'Cuartil_Techo' in df_tabla.columns else df_tabla.get('Cuartil_Util', '')
@@ -704,10 +767,11 @@ with tab1:
         df_tabla = df_tabla.sort_values(['_orden_cuartil','Brecha_vs_Techo' if 'Brecha_vs_Techo' in df_tabla.columns else '_orden_cuartil'], ascending=[True, False])
 
     cols_t = ['NOMBRE','JP','Tramo_Antiguedad','HRS_CONTRATO','Hrs. Prod. Cont.','Dias_trabajados',
-              'Utilización Máxima Perfil','Utilización','Brecha vs Techo','Adhesión','Ocupación','Cuartil']
+              'Utilización Máxima Perfil','Utilización','Puntos faltantes al techo','Adhesión','Ocupación','Cuartil']
     cols_show = [c for c in cols_t if c in df_tabla.columns]
     if not is_admin and 'JP' in cols_show:
         cols_show.remove('JP')
+    st.caption('En la columna Puntos faltantes al techo, un número mayor significa que el agente está más lejos de su utilización máxima posible. La meta es reducir esa brecha.')
     st.dataframe(df_tabla[cols_show], use_container_width=True, key="tabla_resumen_agentes")
 
 # ══════════════════════════════════════════
@@ -732,36 +796,58 @@ with tab2:
         data_ag = diario_scope[diario_scope['Fecha'] == fecha_sel].dropna(subset=['Utilizacion']).copy() if fecha_sel and 'Fecha' in diario_scope.columns else pd.DataFrame()
         titulo_periodo = str(fecha_sel) if fecha_sel else "Día"
 
-    tab2a, tab2b, tab2c = st.tabs(["📈 Ranking clásico", "🏆 Ranking justo", "🧭 Lecturas de gestión"])
+    tab2a, tab2b, tab2c = st.tabs(["📈 Ranking Agentes", "🏆 Ranking Supervisor", "🧭 Lecturas de gestión"])
 
     with tab2a:
-        st.markdown(f"### Ranking clásico por utilización — {titulo_periodo}")
-        if len(data_jp) > 0 and 'Utilizacion' in data_jp.columns:
-            data_jp['Sem_t2'] = data_jp['Utilizacion'].apply(semaforo_util)
-            fig_jp = px.bar(data_jp.sort_values('Utilizacion', ascending=True), x='Utilizacion', y='JP', color='Sem_t2', color_discrete_map=colores_semaforo, orientation='h', text='Utilizacion')
-            fig_jp.add_vline(x=75, line_dash='dash', line_color='orange')
-            fig_jp.add_vline(x=85, line_dash='dash', line_color='green')
-            fig_jp.update_traces(texttemplate='%{text:.1f}%', textposition='outside')
-            fig_jp.update_layout(height=430, plot_bgcolor='white', xaxis_title='Utilización (%)')
-            st.plotly_chart(fig_jp, use_container_width=True, key="fig_jp_clasico")
+        st.markdown(f"### Ranking Agentes — {titulo_periodo}")
         if len(data_ag) > 0 and 'Utilizacion' in data_ag.columns:
-            st.markdown(f"### Agentes — {titulo_periodo}")
             if is_admin and 'JP' in data_ag.columns:
                 jp_opc = ['Todos'] + sorted(data_ag['JP'].dropna().unique().tolist())
                 jp_fil = st.selectbox("Filtrar supervisor", jp_opc, key="jp_rank")
                 dag = data_ag[data_ag['JP'] == jp_fil].copy() if jp_fil != 'Todos' else data_ag.copy()
             else:
                 dag = data_ag.copy()
+
+            if 'Cumplimiento_Techo' not in dag.columns and {'Utilizacion','Techo_Perfil'}.issubset(dag.columns):
+                dag['Cumplimiento_Techo'] = (dag['Utilizacion'] / dag['Techo_Perfil'] * 100).round(1).clip(upper=100)
+            if 'Brecha_vs_Techo' not in dag.columns and {'Techo_Perfil','Utilizacion'}.issubset(dag.columns):
+                dag['Brecha_vs_Techo'] = (dag['Techo_Perfil'] - dag['Utilizacion']).round(1)
             dag['Sem_t2'] = dag['Utilizacion'].apply(semaforo_util)
+
             fig_ag = px.bar(dag.sort_values('Utilizacion', ascending=True), x='Utilizacion', y='NOMBRE', color='Sem_t2', color_discrete_map=colores_semaforo, orientation='h', text='Utilizacion')
             fig_ag.add_vline(x=75, line_dash='dash', line_color='orange', annotation_text='Mín 75%')
             fig_ag.add_vline(x=85, line_dash='dash', line_color='green', annotation_text='Óptimo 85%')
-            fig_ag.update_traces(texttemplate='%{text:.1f}%', textposition='outside')
-            fig_ag.update_layout(height=580, plot_bgcolor='white', xaxis_title='Utilización (%)')
+            fig_ag.update_traces(texttemplate='%{text:.1f}%', textposition='outside', textfont=dict(size=11))
+            fig_ag.update_layout(height=max(580, 24*len(dag)), plot_bgcolor='white', xaxis_title='Utilización (%)', margin=dict(l=190,r=80,t=60,b=40))
             st.plotly_chart(fig_ag, use_container_width=True, key="fig_ag_clasico")
 
+            st.markdown("#### Lecturas automáticas de agentes")
+            ca1, ca2, ca3 = st.columns(3)
+            def lista_agentes_card(col, titulo, data, campo, color, subtitulo):
+                if len(data) == 0 or campo not in data.columns:
+                    col.info("Sin datos")
+                    return
+                top = data.sort_values(campo, ascending=False).head(6)
+                nombres = '<br>'.join([str(x) for x in top.get('NOMBRE', pd.Series(dtype=str)).tolist()])
+                valor = top.iloc[0].get(campo, np.nan)
+                valor_txt = fmt_pct(valor) if 'Cumplimiento' in campo or 'Utilizacion' in campo else fmt_brecha_clara(valor)
+                col.markdown(f"""
+                <div style='background:{color}20; border-left:5px solid {color}; padding:12px; border-radius:8px; min-height:180px'>
+                    <h4 style='margin:0'>{titulo}</h4>
+                    <p style='margin:6px 0; font-size:12px; color:gray'>{subtitulo}</p>
+                    <p style='margin:4px 0; font-size:12px'>Referencia superior: <b>{valor_txt}</b></p>
+                    <div style='font-size:12px; line-height:1.45'>{nombres}</div>
+                </div>""", unsafe_allow_html=True)
+            lista_agentes_card(ca1, "🏆 Mejor gestión operacional", dag, 'Cumplimiento_Techo', '#2ecc71', 'Agentes más cerca de su techo máximo')
+            lista_agentes_card(ca2, "🚀 Mejor utilización actual", dag, 'Utilizacion', '#3498db', 'Agentes con mayor utilización bruta')
+            if 'Brecha_vs_Techo' in dag.columns:
+                # Para capacidad disponible interesa la brecha mayor: está más lejos de su techo.
+                lista_agentes_card(ca3, "⚠️ Mayor capacidad disponible", dag, 'Brecha_vs_Techo', '#f39c12', 'Agentes con más puntos por cerrar hacia su techo')
+        else:
+            st.info("Sin datos de agentes para esta selección.")
+
     with tab2b:
-        st.markdown(f"### Ranking justo por Score de Gestión JP — {titulo_periodo}")
+        st.markdown(f"### Ranking Supervisor por Score de Gestión JP — {titulo_periodo}")
         if periodo != "Mes":
             st.info("El Score de Gestión JP se calcula a nivel mensual porque requiere tendencia y techo estructural de equipo.")
         score_df = jefatura_scope.copy()
@@ -881,20 +967,29 @@ with tab3:
             </p>
         </div>""", unsafe_allow_html=True)
 
-        c1, c2, c3, c4 = st.columns(4)
+        c1, c2, c3 = st.columns(3)
         card_metric(c1, "Techo perfil", fmt_pct(techo_ag), "Máximo según condición contractual", "#9b59b6", "🏗️")
-        card_metric(c2, "Cumplimiento techo", fmt_pct(cumplimiento_ag), "Utilización / techo perfil", "#2ecc71", "🏆")
-        card_metric(c3, "Brecha vs techo", fmt_pp(brecha_techo), "Puntos disponibles a su máximo", "#f39c12", "📉")
-        card_metric(c4, "Brecha vs COPC", fmt_pp(brecha_copc), "Referencia vs objetivo 86%", "#3498db", "🎯")
+        card_metric(c2, "Utilización actual", fmt_pct(util_mes), "Resultado real del mes seleccionado", "#2ecc71", "📈")
+        card_metric(c3, "Distancia al techo", fmt_brecha_clara(brecha_techo), "Mientras más alto, más lejos de su techo máximo", "#f39c12", "📉")
+
+        meses_ag = [m for m in meses_orden if m in hist_ag_full.columns]
+        vals_ag = [float(ag.get(m)) if pd.notna(ag.get(m)) else None for m in meses_ag]
+        pendiente = pendiente_lineal(vals_ag)
+        comentario = comentario_tendencia_agente(pendiente, cumplimiento_ag)
+        st.markdown(f"""
+        <div style='background:#3498db15; border-left:4px solid #3498db; padding:12px; border-radius:8px; margin-top:10px; margin-bottom:12px'>
+            <h4 style='margin:0'>📈 Tendencia</h4>
+            <p style='margin:4px 0'>{comentario}</p>
+            <p style='margin:0; font-size:12px; color:gray'>Movimiento lineal estimado: <b>{fmt_pp(pendiente)}</b> por mes.</p>
+        </div>""", unsafe_allow_html=True)
 
         # Gráfico atractivo de horas separado
-        ag_hrs = hrs_mes[hrs_mes['NOMBRE'] == agente_sel] if 'NOMBRE' in hrs_mes.columns else pd.DataFrame()
+        ag_hrs = hrs_mes_scope[hrs_mes_scope['NOMBRE'] == agente_sel] if 'NOMBRE' in hrs_mes_scope.columns else pd.DataFrame()
         if not ag_hrs.empty:
             r = ag_hrs.iloc[0]
             horas_items = {
                 'Programado': r.get('Turno_hrs','00:00:00'),
                 'Conectado': r.get('Conectado_hrs','00:00:00'),
-                'Prod. Contrato': r.get('Hrs_Prod_Contrato','00:00:00'),
                 'Prod. Reales': r.get('Hrs_Productivas','00:00:00'),
                 'Improductivas': r.get('Hrs_Improductivas','00:00:00'),
                 'Disponible': r.get('Disponible_hrs','00:00:00'),
@@ -905,22 +1000,12 @@ with tab3:
             horas_df['Horas'] = horas_df['Minutos'] / 60
             horas_df['HHMMSS'] = horas_df['Minutos'].apply(min_a_hhmmss)
             fig_horas_ag = px.bar(horas_df.sort_values('Horas'), x='Horas', y='Concepto', orientation='h', text='HHMMSS', title='Detalle de horas del agente')
-            fig_horas_ag.update_traces(textposition='outside')
-            fig_horas_ag.update_layout(height=360, plot_bgcolor='white')
+            fig_horas_ag.update_traces(textposition='outside', textfont=dict(size=12))
+            fig_horas_ag.update_layout(height=400, plot_bgcolor='white', margin=dict(l=150,r=80,t=60,b=40))
             st.plotly_chart(fig_horas_ag, use_container_width=True, key="fig_horas_agente")
 
-        meses_ag = [m for m in meses_orden if m in hist_ag_full.columns]
-        vals_ag = [float(ag.get(m)) if pd.notna(ag.get(m)) else None for m in meses_ag]
-        pendiente = pendiente_lineal(vals_ag)
-        comentario = comentario_tendencia_agente(pendiente, cumplimiento_ag)
-        st.markdown(f"""
-        <div style='background:#3498db15; border-left:4px solid #3498db; padding:12px; border-radius:8px; margin-top:10px'>
-            <h4 style='margin:0'>📈 Tendencia</h4>
-            <p style='margin:4px 0'>{comentario}</p>
-            <p style='margin:0; font-size:12px; color:gray'>Movimiento lineal estimado: <b>{fmt_pp(pendiente)}</b> por mes.</p>
-        </div>""", unsafe_allow_html=True)
-
         meses_fut_ag, preds_ag = regresion_3meses(vals_ag, meses_ag)
+        st.markdown('### 📊 Gráfico tendencia')
         fig_m = go.Figure()
         fig_m.add_trace(go.Scatter(x=meses_ag, y=vals_ag, mode='lines+markers+text', text=[f"{v:.1f}%" if v else "" for v in vals_ag], textposition='top center', line=dict(color=color_actual, width=3), marker=dict(size=12), name=agente_sel))
         if preds_ag:
@@ -936,41 +1021,56 @@ with tab3:
 with tab4:
     st.subheader("🔴 Agentes críticos: lectura bruta vs techo")
     base_crit = resumen_scope.copy()
+    if is_admin and supervisor_sel == "Todos" and 'JP' in base_crit.columns:
+        sup_crit = st.selectbox("Filtrar supervisor", ['Todos'] + sorted(base_crit['JP'].dropna().unique().tolist()), key='sup_tab4')
+        if sup_crit != 'Todos':
+            base_crit = base_crit[base_crit['JP'] == sup_crit].copy()
+
     if 'Cumplimiento_Techo' not in base_crit.columns and {'Utilizacion','Techo_Perfil'}.issubset(base_crit.columns):
         base_crit['Cumplimiento_Techo'] = (base_crit['Utilizacion']/base_crit['Techo_Perfil']*100).round(1).clip(upper=100)
     if 'Brecha_vs_Techo' not in base_crit.columns and {'Techo_Perfil','Utilizacion'}.issubset(base_crit.columns):
         base_crit['Brecha_vs_Techo'] = (base_crit['Techo_Perfil'] - base_crit['Utilizacion']).round(1)
+    if 'Cuartil_Techo' not in base_crit.columns and 'Cumplimiento_Techo' in base_crit.columns:
+        base_crit['Cuartil_Techo'] = base_crit['Cumplimiento_Techo'].apply(cuartil_techo)
 
     crit_bruto = base_crit[base_crit['Utilizacion'] < 75].copy() if 'Utilizacion' in base_crit.columns else pd.DataFrame()
-    crit_techo = base_crit[(base_crit['Cumplimiento_Techo'] < 85) | (base_crit['Brecha_vs_Techo'] > 5)].copy() if {'Cumplimiento_Techo','Brecha_vs_Techo'}.issubset(base_crit.columns) else pd.DataFrame()
+    # En este tab sólo se muestran agentes en estado crítico o bajo meta respecto a su techo.
+    if 'Cuartil_Techo' in base_crit.columns:
+        crit_techo = base_crit[base_crit['Cuartil_Techo'].astype(str).str.startswith(('Q0','Q1'))].copy()
+    else:
+        crit_techo = base_crit[(base_crit['Cumplimiento_Techo'] < 85) | (base_crit['Brecha_vs_Techo'] > 5)].copy() if {'Cumplimiento_Techo','Brecha_vs_Techo'}.issubset(base_crit.columns) else pd.DataFrame()
 
     c1, c2, c3 = st.columns(3)
     c1.metric("🔴 Crítico bruto", len(crit_bruto), "Utilización < 75%")
-    c2.metric("🎯 Crítico vs techo", len(crit_techo), "Lejos de su capacidad máxima")
+    c2.metric("🎯 Crítico/Bajo meta vs techo", len(crit_techo), "Q0 o Q1 por cumplimiento de techo")
     c3.metric("👥 Base visible", len(base_crit), "Agentes evaluados")
 
     st.markdown("#### 🎯 Críticos reales vs techo")
-    st.caption("Esta vista prioriza a quienes están lejos de su utilización máxima posible según perfil. La utilización bruta queda como dato de referencia.")
-    cols_crit = ['NOMBRE','JP','Tramo_Antiguedad','HRS_CONTRATO','Techo_Perfil','Utilizacion','Cumplimiento_Techo','Brecha_vs_Techo','Brecha_vs_COPC','Cuartil_Techo']
-    cm2 = crit_techo[[c for c in cols_crit if c in crit_techo.columns]].copy().sort_values('Cumplimiento_Techo' if 'Cumplimiento_Techo' in crit_techo.columns else 'Utilizacion')
-    if not is_admin and 'JP' in cm2.columns: cm2 = cm2.drop(columns=['JP'])
-    rename_crit = {'Techo_Perfil':'Utilización Máxima Perfil','Utilizacion':'Utilización Bruta','Cumplimiento_Techo':'Cumplimiento Techo','Brecha_vs_Techo':'Brecha vs Techo','Brecha_vs_COPC':'Brecha vs COPC','Cuartil_Techo':'Clasificación'}
+    st.caption("Sólo se muestran agentes críticos o bajo meta respecto a su techo. La utilización bruta queda como referencia dentro de la misma tabla.")
+    cols_crit = ['NOMBRE','JP','Tramo_Antiguedad','HRS_CONTRATO','Techo_Perfil','Utilizacion','Cumplimiento_Techo','Brecha_vs_Techo','Cuartil_Techo']
+    cm2 = crit_techo[[c for c in cols_crit if c in crit_techo.columns]].copy()
+    if 'NOMBRE' in hist_ag_full.columns and 'Veces_Critico' in hist_ag_full.columns:
+        extra_hist = hist_ag_full[['NOMBRE','Veces_Critico','Meses_Critico']].drop_duplicates('NOMBRE')
+        cm2 = cm2.merge(extra_hist, on='NOMBRE', how='left')
+    if not is_admin and 'JP' in cm2.columns:
+        cm2 = cm2.drop(columns=['JP'])
+    if 'Cumplimiento_Techo' in cm2.columns:
+        cm2 = cm2.sort_values(['Cumplimiento_Techo','Brecha_vs_Techo'] if 'Brecha_vs_Techo' in cm2.columns else ['Cumplimiento_Techo'], ascending=[True, False] if 'Brecha_vs_Techo' in cm2.columns else [True])
+    rename_crit = {
+        'Techo_Perfil':'Utilización Máxima Perfil',
+        'Utilizacion':'Utilización Bruta',
+        'Cumplimiento_Techo':'Cumplimiento Techo',
+        'Brecha_vs_Techo':'Puntos faltantes al techo',
+        'Cuartil_Techo':'Clasificación',
+        'Veces_Critico':'Veces crítico histórico',
+        'Meses_Critico':'Meses crítico histórico'
+    }
     cm2 = cm2.rename(columns=rename_crit)
     for c in ['Utilización Máxima Perfil','Utilización Bruta','Cumplimiento Techo']:
         if c in cm2.columns: cm2[c] = cm2[c].apply(fmt_pct)
-    for c in ['Brecha vs Techo','Brecha vs COPC']:
-        if c in cm2.columns: cm2[c] = cm2[c].apply(fmt_pp)
+    if 'Puntos faltantes al techo' in cm2.columns:
+        cm2['Puntos faltantes al techo'] = cm2['Puntos faltantes al techo'].apply(fmt_brecha_clara)
     st.dataframe(cm2, use_container_width=True, key="tabla_criticos_techo")
-
-    st.markdown("#### 📌 Críticos por utilización bruta")
-    cb = crit_bruto[[c for c in cols_crit if c in crit_bruto.columns]].copy().sort_values('Utilizacion' if 'Utilizacion' in crit_bruto.columns else 'NOMBRE')
-    if not is_admin and 'JP' in cb.columns: cb = cb.drop(columns=['JP'])
-    cb = cb.rename(columns=rename_crit)
-    for c in ['Utilización Máxima Perfil','Utilización Bruta','Cumplimiento Techo']:
-        if c in cb.columns: cb[c] = cb[c].apply(fmt_pct)
-    for c in ['Brecha vs Techo','Brecha vs COPC']:
-        if c in cb.columns: cb[c] = cb[c].apply(fmt_pp)
-    st.dataframe(cb, use_container_width=True, key="tabla_criticos_bruto")
 
 # ══════════════════════════════════════════
 # TAB 5 — CONTROL DE HORAS
