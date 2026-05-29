@@ -237,18 +237,27 @@ def antiguedad_texto(fi):
     except Exception:
         return "Sin dato"
 
-def regresion_3meses(valores, meses):
+def regresion_3meses(valores, meses, techo=None):
+    """
+    Proyección lineal a 3 meses, limitada por techo estructural/perfil cuando existe.
+    Retorna meses futuros, predicciones finales y predicciones lineales originales.
+    """
     try:
-        datos = [(i,v) for i,v in enumerate(valores) if pd.notna(v)]
-        if len(datos) < 2: return [], []
-        X = np.array([d[0] for d in datos]).reshape(-1,1)
+        datos = [(i, float(v)) for i, v in enumerate(valores) if pd.notna(v)]
+        if len(datos) < 2:
+            return [], [], []
+        X = np.array([d[0] for d in datos]).reshape(-1, 1)
         y = np.array([d[1] for d in datos])
         mod = LinearRegression().fit(X, y)
         ui = max(d[0] for d in datos)
-        preds = mod.predict(np.array([ui+1,ui+2,ui+3]).reshape(-1,1))
-        return [f"Proj. {i+1}" for i in range(3)], preds.tolist()
+        preds_raw = mod.predict(np.array([ui+1, ui+2, ui+3]).reshape(-1, 1)).tolist()
+        if techo is not None and pd.notna(techo) and float(techo) > 0:
+            preds_final = [min(float(v), float(techo)) for v in preds_raw]
+        else:
+            preds_final = preds_raw
+        return [f"Proj. {i+1}" for i in range(3)], preds_final, preds_raw
     except Exception:
-        return [], []
+        return [], [], []
 
 def pendiente_lineal(valores):
     try:
@@ -272,6 +281,36 @@ def comentario_tendencia_agente(pendiente, cumplimiento=None):
     if pendiente <= -1.0:
         return "Tendencia a la baja. Requiere seguimiento constante e intervención."
     return "Leve tendencia a la baja. Se recomienda revisar causas operativas."
+
+def lectura_proyeccion(nombre_entidad, actual, techo, cumplimiento, brecha, pendiente, preds, contexto="servicio"):
+    """Genera lectura automática simple para servicio, JP o agente."""
+    actual_txt = fmt_pct(actual)
+    techo_txt = fmt_pct(techo)
+    cumplimiento_txt = fmt_pct(cumplimiento)
+    brecha_txt = fmt_pp(brecha) if pd.notna(brecha) else "—"
+    pendiente_txt = fmt_pp(pendiente) if pendiente is not None else "—"
+    if preds:
+        proy_txt = f"Mes +1: {fmt_pct(preds[0])} | Mes +2: {fmt_pct(preds[1])} | Mes +3: {fmt_pct(preds[2])}"
+    else:
+        proy_txt = "Sin datos suficientes para proyectar 3 meses."
+
+    if pd.isna(actual) or pd.isna(techo) or not techo:
+        interpretacion = "No hay datos suficientes para interpretar la capacidad estructural."
+    elif brecha <= 1:
+        interpretacion = "Está prácticamente en su techo máximo: el foco debe ser sostener el resultado."
+    elif cumplimiento >= 95:
+        interpretacion = "Está muy cerca de su techo máximo: la gestión actual muestra alto aprovechamiento de capacidad."
+    elif cumplimiento >= 90:
+        interpretacion = "Tiene buen aprovechamiento de su capacidad, pero aún existe espacio de mejora."
+    else:
+        interpretacion = "Existe capacidad disponible relevante: se recomienda intervención y seguimiento operacional."
+
+    return (
+        f"{nombre_entidad}: la utilización actual es {actual_txt}, lo que representa {cumplimiento_txt} "
+        f"del techo máximo alcanzable ({techo_txt}). La distancia actual al techo es {brecha_txt}; "
+        f"mientras mayor sea esta brecha, más lejos está de su máximo posible. "
+        f"La tendencia estimada es {pendiente_txt} por mes. {proy_txt}. {interpretacion}"
+    )
 
 def fmt_pct(x, dec=1):
     try:
@@ -699,15 +738,31 @@ with tab1:
     for m in meses_disp:
         vals = hist_ag[m].dropna()
         promedios.append(vals.mean() if len(vals) > 0 else None)
-    meses_fut, preds = regresion_3meses(promedios, meses_disp)
+    meses_fut, preds, preds_raw = regresion_3meses(promedios, meses_disp, techo_estructural_servicio)
     fig4 = go.Figure()
     fig4.add_trace(go.Scatter(x=meses_disp, y=promedios, mode='lines+markers+text', text=[f"{v:.1f}%" if pd.notna(v) else "" for v in promedios], textposition='top center', line=dict(color='#3498db', width=3), marker=dict(size=12), name='Real'))
     if preds:
         fig4.add_trace(go.Scatter(x=meses_fut, y=preds, mode='lines+markers+text', text=[f"{v:.1f}%" for v in preds], textposition='top center', name='Proyección', line=dict(color='#9b59b6', dash='dash', width=3), marker=dict(size=12, symbol='diamond')))
     fig4.add_hline(y=objetivo_copc, line_dash='dash', line_color='green', annotation_text=f'COPC {objetivo_copc:.1f}%')
     fig4.add_hline(y=techo_estructural_servicio, line_dash='dot', line_color='#9b59b6', annotation_text=f'Techo estructural {techo_estructural_servicio:.1f}%')
-    fig4.update_layout(height=430, plot_bgcolor='white')
+    fig4.update_layout(height=460, plot_bgcolor='white', yaxis_title='Utilización (%)')
     st.plotly_chart(fig4, use_container_width=True, key="fig4_servicio")
+
+    util_actual_servicio = next((v for v in reversed(promedios) if pd.notna(v)), np.nan)
+    brecha_servicio = techo_estructural_servicio - util_actual_servicio if pd.notna(util_actual_servicio) and pd.notna(techo_estructural_servicio) else np.nan
+    cumplimiento_servicio_calc = (util_actual_servicio / techo_estructural_servicio * 100) if pd.notna(util_actual_servicio) and pd.notna(techo_estructural_servicio) and techo_estructural_servicio else np.nan
+    pendiente_servicio = pendiente_lineal(promedios)
+    lectura_serv = lectura_proyeccion(
+        'Servicio', util_actual_servicio, techo_estructural_servicio, cumplimiento_servicio_calc,
+        brecha_servicio, pendiente_servicio, preds, contexto='servicio'
+    )
+    st.markdown(f"""
+    <div style='background:#2c3e5018; border-left:4px solid #9b59b6; padding:12px; border-radius:8px; margin-top:8px; margin-bottom:18px'>
+        <h4 style='margin:0 0 6px 0'>🧭 Lectura automática contra techo estructural</h4>
+        <p style='margin:0; font-size:13px'>{lectura_serv}</p>
+        <p style='margin:6px 0 0 0; font-size:11px; color:gray'>Nota: la proyección mantiene la tendencia lineal, pero se limita al techo estructural para no mostrar resultados imposibles.</p>
+    </div>
+    """, unsafe_allow_html=True)
 
     st.subheader("📊 Movimiento de Dotación por Cuartil")
     dist_plot = dist_techo if isinstance(dist_techo, pd.DataFrame) and len(dist_techo) > 0 else dist_cuartil
@@ -975,12 +1030,15 @@ with tab3:
         meses_ag = [m for m in meses_orden if m in hist_ag_full.columns]
         vals_ag = [float(ag.get(m)) if pd.notna(ag.get(m)) else None for m in meses_ag]
         pendiente = pendiente_lineal(vals_ag)
+        meses_fut_ag, preds_ag, preds_raw_ag = regresion_3meses(vals_ag, meses_ag, techo_ag)
         comentario = comentario_tendencia_agente(pendiente, cumplimiento_ag)
+        lectura_ag = lectura_proyeccion(agente_sel, util_mes, techo_ag, cumplimiento_ag, brecha_techo, pendiente, preds_ag, contexto='agente')
         st.markdown(f"""
         <div style='background:#3498db15; border-left:4px solid #3498db; padding:12px; border-radius:8px; margin-top:10px; margin-bottom:12px'>
-            <h4 style='margin:0'>📈 Tendencia</h4>
+            <h4 style='margin:0'>📈 Tendencia y proyección contra techo</h4>
             <p style='margin:4px 0'>{comentario}</p>
-            <p style='margin:0; font-size:12px; color:gray'>Movimiento lineal estimado: <b>{fmt_pp(pendiente)}</b> por mes.</p>
+            <p style='margin:4px 0; font-size:13px'>{lectura_ag}</p>
+            <p style='margin:0; font-size:12px; color:gray'>La proyección conserva la línea de tendencia, pero se limita al techo del perfil para no mostrar resultados imposibles.</p>
         </div>""", unsafe_allow_html=True)
 
         # Gráfico atractivo de horas separado
@@ -1004,7 +1062,6 @@ with tab3:
             fig_horas_ag.update_layout(height=400, plot_bgcolor='white', margin=dict(l=150,r=80,t=60,b=40))
             st.plotly_chart(fig_horas_ag, use_container_width=True, key="fig_horas_agente")
 
-        meses_fut_ag, preds_ag = regresion_3meses(vals_ag, meses_ag)
         st.markdown('### 📊 Gráfico tendencia')
         fig_m = go.Figure()
         fig_m.add_trace(go.Scatter(x=meses_ag, y=vals_ag, mode='lines+markers+text', text=[f"{v:.1f}%" if v else "" for v in vals_ag], textposition='top center', line=dict(color=color_actual, width=3), marker=dict(size=12), name=agente_sel))
