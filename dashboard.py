@@ -21,7 +21,7 @@ st.set_page_config(
 # ════════════════════════════════════════════════════════════
 # CONFIGURACIÓN — ACTUALIZA DRIVE_ID CON EL ID DE Dashboard_KPI_ECC.xlsx
 # ════════════════════════════════════════════════════════════
-DRIVE_ID = "12zc9C9pw8ltG8yXZfHtBBX_EJaEYobgE"   # ← reemplazar por ID del archivo fijo
+DRIVE_ID = "1n37x4ufR_u5IcDGXqhm13FYyaY48NGjX"   # ← reemplazar por ID del archivo fijo
 OBJETIVO_COPC_DEFAULT = 86.0
 
 # ════════════════════════════════════════════════════════════
